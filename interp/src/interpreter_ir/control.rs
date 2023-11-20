@@ -6,6 +6,8 @@ use std::rc::Rc;
 // These IR constructs are unchanged but are here re-exported for consistency
 pub use calyx_ir::{Empty, Enable, Invoke};
 
+use crate::utils::{arctex, ArcTex};
+
 /// Data for the `seq` control statement.
 #[derive(Debug)]
 pub struct Seq {
@@ -28,9 +30,9 @@ pub struct Par {
 #[derive(Debug)]
 pub struct If {
     /// Port that connects the conditional check.
-    pub port: RRC<Port>,
+    pub port: ArcTex<Port>,
     /// Optional combinational group attached using `with`.
-    pub cond: Option<RRC<CombGroup>>,
+    pub cond: Option<ArcTex<CombGroup>>,
     /// Control for the true branch.
     pub tbranch: Control,
     /// Control for the true branch.
@@ -43,9 +45,9 @@ pub struct If {
 #[derive(Debug)]
 pub struct While {
     /// Port that connects the conditional check.
-    pub port: RRC<Port>,
+    pub port: ArcTex<Port>,
     /// Group that makes the signal on the conditional port valid.
-    pub cond: Option<RRC<CombGroup>>,
+    pub cond: Option<ArcTex<CombGroup>>,
     /// Control for the loop body.
     pub body: Control,
     /// Attributes attached to this control statement.
@@ -56,37 +58,37 @@ pub struct While {
 #[derive(Debug, Clone)]
 pub enum Control {
     /// Represents sequential composition of control statements.
-    Seq(Rc<Seq>),
+    Seq(ArcTex<Seq>),
     /// Represents parallel composition of control statements.
-    Par(Rc<Par>),
+    Par(ArcTex<Par>),
     /// Standard imperative if statement
-    If(Rc<If>),
+    If(ArcTex<If>),
     /// Standard imperative while statement
-    While(Rc<While>),
+    While(ArcTex<While>),
     /// Invoke a sub-component with the given port assignments
-    Invoke(Rc<Invoke>),
+    Invoke(ArcTex<Invoke>),
     /// Runs the control for a list of subcomponents.
-    Enable(Rc<Enable>),
+    Enable(ArcTex<Enable>),
     /// Control statement that does nothing.
-    Empty(Rc<Empty>),
+    Empty(ArcTex<Empty>),
 }
 
 impl From<CalyxControl> for Control {
     fn from(cc: CalyxControl) -> Self {
         match cc {
-            CalyxControl::Seq(s) => Control::Seq(Rc::new(s.into())),
-            CalyxControl::Par(p) => Control::Par(Rc::new(p.into())),
-            CalyxControl::If(i) => Control::If(Rc::new(i.into())),
-            CalyxControl::While(wh) => Control::While(Rc::new(wh.into())),
-            CalyxControl::Invoke(invoke) => Control::Invoke(Rc::new(invoke)),
-            CalyxControl::Enable(enable) => Control::Enable(Rc::new(enable)),
+            CalyxControl::Seq(s) => Control::Seq(arctex(s.into())),
+            CalyxControl::Par(p) => Control::Par(arctex(p.into())),
+            CalyxControl::If(i) => Control::If(arctex(i.into())),
+            CalyxControl::While(wh) => Control::While(arctex(wh.into())),
+            CalyxControl::Invoke(invoke) => Control::Invoke(arctex(invoke)),
+            CalyxControl::Enable(enable) => Control::Enable(arctex(enable)),
             CalyxControl::Static(_) => {
                 todo!("interpreter does not yet support static")
             }
             CalyxControl::Repeat(_) => {
                 todo!("interpreter does not yet support repeat")
             }
-            CalyxControl::Empty(empty) => Control::Empty(Rc::new(empty)),
+            CalyxControl::Empty(empty) => Control::Empty(arctex(empty)),
         }
     }
 }
@@ -112,8 +114,8 @@ impl From<ir::Par> for Par {
 impl From<ir::If> for If {
     fn from(i: ir::If) -> Self {
         Self {
-            port: i.port,
-            cond: i.cond,
+            port: arctex(i.port.borrow().clone()),
+            cond: i.cond.map(|c| arctex(c.borrow().clone())),
             tbranch: (*i.tbranch).into(),
             fbranch: (*i.fbranch).into(),
             attributes: i.attributes,
@@ -124,8 +126,8 @@ impl From<ir::If> for If {
 impl From<ir::While> for While {
     fn from(wh: ir::While) -> Self {
         Self {
-            port: wh.port,
-            cond: wh.cond,
+            port: arctex(wh.port.borrow().clone()),
+            cond: wh.cond.map(|c| arctex(c.borrow().clone())),
             body: (*wh.body).into(),
             attributes: wh.attributes,
         }

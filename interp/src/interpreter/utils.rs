@@ -73,8 +73,8 @@ where
 }
 pub fn control_is_empty(control: &iir::Control) -> bool {
     match control {
-        iir::Control::Seq(s) => s.stmts.iter().all(control_is_empty),
-        iir::Control::Par(p) => p.stmts.iter().all(control_is_empty),
+        iir::Control::Seq(s) => s.read().stmts.iter().all(control_is_empty),
+        iir::Control::Par(p) => p.read().stmts.iter().all(control_is_empty),
         iir::Control::If(_) => false,
         iir::Control::While(_) => false,
         iir::Control::Invoke(_) => false,

@@ -1,13 +1,17 @@
 use super::utils::{self, ConstCell, ConstPort};
-use crate::environment::InterpreterState;
-use crate::errors::{InterpreterError, InterpreterResult};
 use crate::interpreter::utils::get_dest_cells;
 use crate::utils::{AsRaw, PortAssignment, RcOrConst};
 use crate::values::Value;
+use crate::{environment::InterpreterState, utils::ArcTex};
+use crate::{
+    errors::{InterpreterError, InterpreterResult},
+    utils::arctex,
+};
 use calyx_ir::{self as ir, Assignment, Cell, RRC};
-use std::cell::Ref;
+use parking_lot::RwLockReadGuard;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
+use std::{cell::Ref, sync::Arc};
 
 use super::control_interpreter::EnableHolder;
 use crate::interpreter_ir as iir;
@@ -15,38 +19,32 @@ use crate::interpreter_ir as iir;
 use rayon::prelude::*;
 
 pub enum AssignmentHolder {
-    CombGroup(RRC<ir::CombGroup>),
-    Group(RRC<ir::Group>),
-    Vec(Rc<Vec<Assignment<ir::Nothing>>>),
+    CombGroup(ArcTex<ir::CombGroup>),
+    Group(ArcTex<ir::Group>),
+    Vec(ArcTex<Vec<Assignment<ir::Nothing>>>),
 }
 
 impl Default for AssignmentHolder {
     fn default() -> Self {
-        Self::Vec(Rc::new(Vec::new()))
+        Self::Vec(arctex(Vec::new()))
     }
 }
 
-impl From<RRC<ir::CombGroup>> for AssignmentHolder {
-    fn from(input: RRC<ir::CombGroup>) -> Self {
+impl From<ArcTex<ir::CombGroup>> for AssignmentHolder {
+    fn from(input: ArcTex<ir::CombGroup>) -> Self {
         Self::CombGroup(input)
     }
 }
 
-impl From<RRC<ir::Group>> for AssignmentHolder {
-    fn from(gr: RRC<ir::Group>) -> Self {
+impl From<ArcTex<ir::Group>> for AssignmentHolder {
+    fn from(gr: ArcTex<ir::Group>) -> Self {
         Self::Group(gr)
     }
 }
 
 impl From<Vec<Assignment<ir::Nothing>>> for AssignmentHolder {
     fn from(v: Vec<Assignment<ir::Nothing>>) -> Self {
-        Self::Vec(Rc::new(v))
-    }
-}
-
-impl From<Rc<Vec<Assignment<ir::Nothing>>>> for AssignmentHolder {
-    fn from(v: Rc<Vec<Assignment<ir::Nothing>>>) -> Self {
-        Self::Vec(v)
+        Self::Vec(arctex(v))
     }
 }
 
@@ -56,7 +54,9 @@ impl From<EnableHolder> for AssignmentHolder {
             EnableHolder::Group(grp) => AssignmentHolder::Group(grp),
             EnableHolder::CombGroup(cgrp) => AssignmentHolder::CombGroup(cgrp),
             EnableHolder::Vec(v) => AssignmentHolder::Vec(v),
-            EnableHolder::Enable(e) => AssignmentHolder::Group(e.group.clone()),
+            EnableHolder::Enable(e) => {
+                AssignmentHolder::Group(arctex(e.read().group.borrow().clone()))
+            }
         }
     }
 }
@@ -64,24 +64,24 @@ impl From<EnableHolder> for AssignmentHolder {
 impl AssignmentHolder {
     pub fn get_ref(&self) -> IterRef<'_> {
         match self {
-            AssignmentHolder::CombGroup(cg) => IterRef::CombGroup(cg.borrow()),
-            AssignmentHolder::Group(grp) => IterRef::Group(grp.borrow()),
-            AssignmentHolder::Vec(v) => IterRef::Vec(v),
+            AssignmentHolder::CombGroup(cg) => IterRef::CombGroup(cg.read()),
+            AssignmentHolder::Group(grp) => IterRef::Group(grp.read()),
+            AssignmentHolder::Vec(v) => IterRef::Vec(v.read()),
         }
     }
     pub fn get_name(&self) -> Option<ir::Id> {
         match self {
-            AssignmentHolder::CombGroup(cg) => Some(cg.borrow().name()),
-            AssignmentHolder::Group(g) => Some(g.borrow().name()),
+            AssignmentHolder::CombGroup(cg) => Some(cg.read().name()),
+            AssignmentHolder::Group(g) => Some(g.read().name()),
             AssignmentHolder::Vec(_) => None,
         }
     }
 }
 
 pub enum IterRef<'a> {
-    CombGroup(Ref<'a, ir::CombGroup>),
-    Group(Ref<'a, ir::Group>),
-    Vec(&'a Rc<Vec<Assignment<ir::Nothing>>>),
+    CombGroup(RwLockReadGuard<'a, ir::CombGroup>),
+    Group(RwLockReadGuard<'a, ir::Group>),
+    Vec(RwLockReadGuard<'a, Vec<Assignment<ir::Nothing>>>),
 }
 
 impl<'a> IterRef<'a> {
@@ -233,7 +233,7 @@ impl AssignmentInterpreter {
             };
 
             // compute all updates from the assignments
-            for assignment in assigns {
+            self.assigns.get_ref().par_iter().for_each(|assignment| {
                 if self.state.eval_guard(&assignment.guard)? {
                     let pa = PortAssignment::new(assignment);
                     //first check nothing has been assigned to this destination yet
@@ -284,7 +284,7 @@ impl AssignmentInterpreter {
                         self.val_changed = Some(true);
                     }
                 }
-            }
+            });
 
             let assigned_const_ports: HashSet<_> = assigned_ports
                 .iter()

@@ -190,6 +190,12 @@ impl<T> AsRaw<T> for Arc<T> {
     }
 }
 
+impl<T> AsRaw<T> for &Arc<T> {
+    fn as_raw(&self) -> *const T {
+        Arc::as_ptr(self)
+    }
+}
+
 pub type ArcTex<T> = Arc<RwLock<T>>;
 pub fn arctex<T>(input: T) -> ArcTex<T> {
     Arc::new(RwLock::new(input))
