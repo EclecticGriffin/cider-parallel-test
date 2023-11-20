@@ -15,8 +15,7 @@ path = "src/main.rs"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-change-based-sim = []
-default = ["change-based-sim"]
+default = []
 
 [dependencies]
 smallvec = { workspace = true, features = ["union", "const_generics"] }
