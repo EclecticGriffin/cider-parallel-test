@@ -12,6 +12,8 @@ use std::rc::Rc;
 use super::control_interpreter::EnableHolder;
 use crate::interpreter_ir as iir;
 
+use rayon::prelude::*;
+
 pub enum AssignmentHolder {
     CombGroup(RRC<ir::CombGroup>),
     Group(RRC<ir::Group>),
@@ -267,16 +269,16 @@ impl AssignmentInterpreter {
                         let port = assignment.dst.clone(); // Rc clone
                         let new_val = new_val_ref.clone();
 
-                        if cfg!(feature = "change-based-sim") {
-                            let pref = port.borrow();
+                        let pref = port.borrow();
 
-                            if let ir::PortParent::Cell(cell) = &pref.parent {
-                                let cell_rrc = cell.upgrade();
-                                if cells_to_run_set.insert(cell_rrc.as_raw()) {
-                                    cells_to_run_rrc.push(cell_rrc)
-                                }
+                        if let ir::PortParent::Cell(cell) = &pref.parent {
+                            let cell_rrc = cell.upgrade();
+                            if cells_to_run_set.insert(cell_rrc.as_raw()) {
+                                cells_to_run_rrc.push(cell_rrc)
                             }
                         }
+
+                        drop(pref);
 
                         updates_list.push((port, new_val)); //no point in rewriting same value to this list
                         self.val_changed = Some(true);
@@ -303,13 +305,11 @@ impl AssignmentInterpreter {
                 let new_val = Value::from(0, old_val_width);
 
                 if old_val.as_unsigned() != 0_u32.into() {
-                    if cfg!(feature = "change-based-sim") {
-                        let port_ref = &self.port_lookup_map[&port].borrow();
-                        if let ir::PortParent::Cell(cell) = &port_ref.parent {
-                            let cell_rrc = cell.upgrade();
-                            if cells_to_run_set.insert(cell_rrc.as_raw()) {
-                                cells_to_run_rrc.push(cell_rrc)
-                            }
+                    let port_ref = &self.port_lookup_map[&port].borrow();
+                    if let ir::PortParent::Cell(cell) = &port_ref.parent {
+                        let cell_rrc = cell.upgrade();
+                        if cells_to_run_set.insert(cell_rrc.as_raw()) {
+                            cells_to_run_rrc.push(cell_rrc)
                         }
                     }
 
@@ -327,14 +327,10 @@ impl AssignmentInterpreter {
 
             let changed = eval_prims(
                 &mut self.state,
-                if cfg!(feature = "change-based-sim") {
-                    if first_iteration {
-                        self.cells.iter()
-                    } else {
-                        cells_to_run_rrc.iter()
-                    }
-                } else {
+                if first_iteration {
                     self.cells.iter()
+                } else {
+                    cells_to_run_rrc.iter()
                 },
                 false,
             )?;
@@ -342,9 +338,7 @@ impl AssignmentInterpreter {
                 self.val_changed = Some(true);
             }
 
-            if cfg!(feature = "change-based-sim") {
-                first_iteration = false;
-            }
+            first_iteration = false;
         }
         Ok(())
     }
