@@ -1,13 +1,14 @@
 use crate::values::Value;
 use calyx_ir::{self as ir, Assignment, Binding, Id, Port, RRC};
+use parking_lot::{Mutex, RwLock};
 use serde::Deserialize;
-use std::cell::Ref;
 use std::collections::HashMap;
 use std::fs;
 use std::hash::{Hash, Hasher};
 use std::ops::{Deref, DerefMut};
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::{cell::Ref, sync::Arc};
 
 pub use crate::debugger::PrintCode;
 /// A wrapper to enable hashing of assignments by their destination port.
@@ -181,4 +182,15 @@ impl<T> AsRaw<T> for RcOrConst<T> {
             RcOrConst::Const(a) => *a,
         }
     }
+}
+
+impl<T> AsRaw<T> for Arc<T> {
+    fn as_raw(&self) -> *const T {
+        Arc::as_ptr(self)
+    }
+}
+
+pub type ArcTex<T> = Arc<RwLock<T>>;
+pub fn arctex<T>(input: T) -> ArcTex<T> {
+    Arc::new(RwLock::new(input))
 }

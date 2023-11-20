@@ -14,7 +14,7 @@ mod control;
 pub use component::Component;
 pub use control::{Control, Empty, Enable, If, Invoke, Par, Seq, While};
 
-use std::rc::Rc;
-pub type ComponentCtx = Rc<Vec<Rc<component::Component>>>;
+use std::{rc::Rc, sync::Arc};
+pub type ComponentCtx = Arc<Vec<Arc<component::Component>>>;
 pub type ContinuousAssignments =
     Rc<Vec<calyx_ir::Assignment<calyx_ir::Nothing>>>;

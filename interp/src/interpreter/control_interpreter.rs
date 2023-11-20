@@ -20,8 +20,8 @@ use crate::{
 };
 use calyx_ir::{self as ir, Assignment, Guard, RRC};
 use calyx_utils::WithPos;
-use std::collections::HashSet;
 use std::rc::Rc;
+use std::{collections::HashSet, sync::Arc};
 
 /// The key to lookup for the position tags
 const POS_TAG: ir::Attribute = ir::Attribute::Num(ir::NumAttr::Pos);
@@ -29,14 +29,14 @@ const POS_TAG: ir::Attribute = ir::Attribute::Num(ir::NumAttr::Pos);
 #[derive(Debug, Clone)]
 pub struct ComponentInfo {
     pub continuous_assignments: iir::ContinuousAssignments,
-    pub input_ports: Rc<HashSet<*const ir::Port>>,
+    pub input_ports: Arc<HashSet<*const ir::Port>>,
     pub qin: ComponentQualifiedInstanceName,
 }
 
 impl ComponentInfo {
     pub fn new(
         continuous_assignments: iir::ContinuousAssignments,
-        input_ports: Rc<HashSet<*const ir::Port>>,
+        input_ports: Arc<HashSet<*const ir::Port>>,
         qin: ComponentQualifiedInstanceName,
     ) -> Self {
         Self {
@@ -1240,7 +1240,7 @@ pub struct StructuralInterpreter {
 
 impl StructuralInterpreter {
     pub fn from_component(
-        comp: &Rc<iir::Component>,
+        comp: &Arc<iir::Component>,
         env: InterpreterState,
     ) -> Self {
         let comp_sig = comp.signature.borrow();

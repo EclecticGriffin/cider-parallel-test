@@ -172,7 +172,7 @@ impl AssignmentInterpreter {
             if let Some(x) = self
                 .state
                 .cell_map
-                .borrow_mut()
+                .write()
                 .get_mut(&(&cell.borrow() as &Cell as ConstCell))
             {
                 let new_vals = x.do_tick()?;
@@ -484,7 +484,7 @@ pub(crate) fn eval_prims<'a, 'b, I: Iterator<Item = &'b RRC<ir::Cell>>>(
     // split mutability
     // TODO: change approach based on new env, once ready
     let ref_clone = env.cell_map.clone(); // RC clone
-    let mut prim_map = ref_clone.borrow_mut();
+    let mut prim_map = ref_clone.write();
 
     let mut update_list: Vec<(RRC<ir::Port>, Value)> = vec![];
 

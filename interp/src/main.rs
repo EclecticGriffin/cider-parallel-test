@@ -16,6 +16,7 @@ use slog::warn;
 use std::{
     path::{Path, PathBuf},
     rc::Rc,
+    sync::Arc,
 };
 
 #[derive(FromArgs)]
@@ -166,10 +167,10 @@ fn main() -> InterpreterResult<()> {
 
     let metadata = ctx.metadata;
 
-    let components: iir::ComponentCtx = Rc::new(
+    let components: iir::ComponentCtx = Arc::new(
         ctx.components
             .into_iter()
-            .map(|x| Rc::new(x.into()))
+            .map(|x| Arc::new(x.into()))
             .collect(),
     );
 

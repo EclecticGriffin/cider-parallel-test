@@ -6,10 +6,10 @@ use crate::interpreter_ir as iir;
 use crate::structures::names::{CompGroupName, GroupQIN};
 use calyx_ir::Id;
 use owo_colors::OwoColorize;
-use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt::Display;
 use std::rc::Rc;
+use std::{collections::HashMap, sync::Arc};
 
 pub struct Counter(u64);
 
@@ -163,7 +163,7 @@ pub(super) struct DebuggingContext {
     watch_count: Counter,
     group_exec_info: GroupExecutionInfo<CompGroupName>,
     // used primarially for checking if a given group exists
-    comp_ctx: HashMap<Id, Rc<iir::Component>>,
+    comp_ctx: HashMap<Id, Arc<iir::Component>>,
     main_comp_name: Id,
 }
 
@@ -178,7 +178,7 @@ impl DebuggingContext {
             group_exec_info: GroupExecutionInfo::new(),
             main_comp_name: *main_component,
 
-            comp_ctx: ctx.iter().map(|x| (x.name, Rc::clone(x))).collect(),
+            comp_ctx: ctx.iter().map(|x| (x.name, Arc::clone(x))).collect(),
         }
     }
 

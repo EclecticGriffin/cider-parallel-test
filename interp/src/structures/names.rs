@@ -6,19 +6,20 @@ use std::{
     hash::Hash,
     ops::Deref,
     rc::Rc,
+    sync::Arc,
 };
 
 #[derive(Debug, Clone)]
 /// A portion of a qualified name representing an instance of a Calyx component.
 pub struct InstanceName {
     /// Handle to the component definition
-    pub component_id: Rc<iir::Component>,
+    pub component_id: Arc<iir::Component>,
     /// The name of the instance
     pub instance: Id,
 }
 
 impl InstanceName {
-    pub fn new(component_id: &Rc<iir::Component>, instance: Id) -> Self {
+    pub fn new(component_id: &Arc<iir::Component>, instance: Id) -> Self {
         Self {
             component_id: component_id.clone(),
             instance,
@@ -35,7 +36,7 @@ impl Hash for InstanceName {
 
 impl PartialEq for InstanceName {
     fn eq(&self, other: &Self) -> bool {
-        Rc::ptr_eq(&self.component_id, &other.component_id)
+        Arc::ptr_eq(&self.component_id, &other.component_id)
             && self.instance == other.instance
     }
 }
@@ -67,7 +68,10 @@ impl ComponentQualifiedInstanceName {
         Self(Rc::new(inner))
     }
 
-    pub fn new_single(component_id: &Rc<iir::Component>, instance: Id) -> Self {
+    pub fn new_single(
+        component_id: &Arc<iir::Component>,
+        instance: Id,
+    ) -> Self {
         let inst = InstanceName::new(component_id, instance);
         Self::from(inst)
     }

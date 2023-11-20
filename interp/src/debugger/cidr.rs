@@ -16,8 +16,9 @@ use crate::{interpreter_ir as iir, primitives::Serializable};
 use calyx_ir::{self as ir, Id, RRC};
 
 use owo_colors::OwoColorize;
-use std::fmt::Write;
+use parking_lot::{MutexGuard, RwLockReadGuard};
 use std::{cell::Ref, collections::HashMap, rc::Rc};
+use std::{fmt::Write, sync::Arc};
 /// Constant amount of space used for debugger messages
 pub(super) const SPACING: &str = "    ";
 
@@ -26,7 +27,7 @@ pub(super) const SPACING: &str = "    ";
 /// information used to coordinate the debugging process.
 pub struct Debugger {
     _context: iir::ComponentCtx,
-    main_component: Rc<iir::Component>,
+    main_component: Arc<iir::Component>,
     debugging_ctx: DebuggingContext,
     source_map: Option<SourceMap>,
 }
@@ -34,12 +35,12 @@ pub struct Debugger {
 impl Debugger {
     pub fn new(
         context: &iir::ComponentCtx,
-        main_component: &Rc<iir::Component>,
+        main_component: &Arc<iir::Component>,
         source_map: Option<SourceMap>,
     ) -> Self {
         Self {
-            _context: Rc::clone(context),
-            main_component: Rc::clone(main_component),
+            _context: Arc::clone(context),
+            main_component: Arc::clone(main_component),
             debugging_ctx: DebuggingContext::new(context, &main_component.name),
             source_map,
         }
@@ -460,12 +461,12 @@ impl Debugger {
             }
             // still walking
             else {
-                let map = Rc::clone(current_env.get_cell_map());
+                let map = std::sync::Arc::clone(current_env.get_cell_map());
                 let cell = current_env.get_cell(*target);
                 if let Some(rrc_cell) = cell {
                     // need to release these references to replace current
                     // target
-                    if map.borrow()[&rrc_cell.as_raw()].get_state().is_some() {
+                    if map.read()[&rrc_cell.as_raw()].get_state().is_some() {
                         drop(current_env);
                         drop(current_ref);
 
@@ -590,7 +591,7 @@ impl<'a> CurrentTarget<'a> {
         match self {
             CurrentTarget::Env(e) => TargetRef::Env(e),
             CurrentTarget::Target { name, map } => {
-                TargetRef::Target(*name, map.borrow())
+                TargetRef::Target(*name, map.read())
             }
         }
     }
@@ -600,7 +601,10 @@ enum TargetRef<'a, 'c> {
     Env(&'c StateView<'a>),
     Target(
         ConstCell,
-        Ref<'c, HashMap<ConstCell, Box<dyn crate::primitives::Primitive>>>,
+        RwLockReadGuard<
+            'c,
+            HashMap<ConstCell, Box<dyn crate::primitives::Primitive>>,
+        >,
     ),
 }
 

@@ -6,6 +6,7 @@
 use std::{
     collections::{BTreeMap, HashSet},
     rc::Rc,
+    sync::Arc,
 };
 
 use crate::{
@@ -190,7 +191,7 @@ impl<'a> StateView<'a> {
     }
 
     /// An accessor for the component at the root of this environment
-    pub fn get_comp(&self) -> &Rc<iir::Component> {
+    pub fn get_comp(&self) -> &Arc<iir::Component> {
         match self {
             StateView::SingleView(c) => &c.component,
             StateView::Composite(c) => &c.0.component,
@@ -212,7 +213,7 @@ impl<'a> StateView<'a> {
         print_code: &PrintCode,
     ) -> Serializable {
         let map = self.get_cell_map();
-        let map_ref = map.borrow();
+        let map_ref = map.read();
         map_ref
             .get(&cell.as_raw())
             .map(|x| Primitive::serialize(&**x, Some(*print_code)))
@@ -257,7 +258,7 @@ impl<'a> StateView<'a> {
     /// Note this code is a complete nightmare and I apologize for it
     pub fn gen_serializer(&self, raw: bool) -> FullySerialize {
         let ctx = self.get_ctx();
-        let cell_prim_map = &self.get_cell_map().borrow();
+        let cell_prim_map = &self.get_cell_map().read();
 
         let bmap: BTreeMap<_, _> = ctx
             .iter()

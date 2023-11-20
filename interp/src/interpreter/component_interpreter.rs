@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::Arc};
 
 use super::{
     control_interpreter::{
@@ -60,11 +60,11 @@ pub struct ComponentInterpreter {
     interp: StructuralOrControl,
     input_ports: Vec<RRC<Port>>,
     output_ports: Vec<RRC<Port>>,
-    comp_ref: Rc<iir::Component>,
+    comp_ref: Arc<iir::Component>,
     control_ref: iir::Control,
-    done_port: RRC<Port>,
-    go_port: RRC<Port>,
-    input_hash_set: Rc<HashSet<*const ir::Port>>,
+    done_port: Arc<Port>,
+    go_port: Arc<Port>,
+    input_hash_set: Arc<HashSet<*const ir::Port>>,
     qual_name: ComponentQualifiedInstanceName,
     /// used to satisfy the Named requirement for primitives, primarially for error messages
     full_name_clone: ir::Id,
@@ -73,14 +73,14 @@ pub struct ComponentInterpreter {
 impl ComponentInterpreter {
     pub fn make_main_component(
         env: InterpreterState,
-        comp: &Rc<iir::Component>,
+        comp: &Arc<iir::Component>,
     ) -> Self {
         let qin = ComponentQualifiedInstanceName::new_single(comp, comp.name);
         Self::from_component(comp, env, qin)
     }
 
     pub fn from_component(
-        comp: &Rc<iir::Component>,
+        comp: &Arc<iir::Component>,
         env: InterpreterState,
         qin: ComponentQualifiedInstanceName,
     ) -> Self {
@@ -99,17 +99,23 @@ impl ComponentInterpreter {
         }
         let control = comp.control.clone();
 
-        let go_port = inputs
-            .iter()
-            .find(|x| x.borrow().attributes.has(ir::NumAttr::Go))
-            .unwrap()
-            .clone();
+        let go_port = Arc::new(
+            inputs
+                .iter()
+                .find(|x| x.borrow().attributes.has(ir::NumAttr::Go))
+                .unwrap()
+                .borrow()
+                .clone(),
+        );
 
-        let done_port = outputs
-            .iter()
-            .find(|x| x.borrow().attributes.has(ir::NumAttr::Done))
-            .unwrap()
-            .clone();
+        let done_port = Arc::new(
+            outputs
+                .iter()
+                .find(|x| x.borrow().attributes.has(ir::NumAttr::Done))
+                .unwrap()
+                .borrow()
+                .clone(),
+        );
 
         let mut override_set =
             inputs.iter().map(|x| x.as_raw()).collect::<HashSet<_>>();
@@ -131,7 +137,7 @@ impl ComponentInterpreter {
             }
         }
 
-        let input_hash_set = Rc::new(override_set);
+        let input_hash_set = Arc::new(override_set);
 
         let interp = if control_is_empty(&control) {
             StructuralInterpreter::from_component(comp, env).into()
@@ -153,7 +159,7 @@ impl ComponentInterpreter {
             interp,
             input_ports: inputs,
             output_ports: outputs,
-            comp_ref: Rc::clone(comp),
+            comp_ref: Arc::clone(comp),
             control_ref: control,
             go_port,
             done_port,
@@ -211,7 +217,7 @@ impl ComponentInterpreter {
     /// Interpret a calyx program from the root
     pub fn interpret_program(
         env: InterpreterState,
-        comp: &Rc<iir::Component>,
+        comp: &Arc<iir::Component>,
     ) -> InterpreterResult<InterpreterState> {
         let qin = ComponentQualifiedInstanceName::new_single(comp, comp.name);
         let mut main_comp = Self::from_component(comp, env, qin);
