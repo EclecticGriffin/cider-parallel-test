@@ -2,13 +2,13 @@ use crate::values::Value;
 use calyx_ir::{self as ir, Assignment, Binding, Id, Port, RRC};
 use parking_lot::{Mutex, RwLock};
 use serde::Deserialize;
-use std::collections::HashMap;
 use std::fs;
 use std::hash::{Hash, Hasher};
 use std::ops::{Deref, DerefMut};
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::{cell::Ref, sync::Arc};
+use std::{collections::HashMap, sync::Weak};
 
 pub use crate::debugger::PrintCode;
 /// A wrapper to enable hashing of assignments by their destination port.
@@ -199,4 +199,32 @@ impl<T> AsRaw<T> for &Arc<T> {
 pub type ArcTex<T> = Arc<RwLock<T>>;
 pub fn arctex<T>(input: T) -> ArcTex<T> {
     Arc::new(RwLock::new(input))
+}
+
+#[derive(Debug)]
+pub struct WeakArcTex<T>(pub(super) Weak<RwLock<T>>);
+
+impl<T> Clone for WeakArcTex<T> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
+impl<T> WeakArcTex<T> {
+    pub fn upgrade(&self) -> ArcTex<T> {
+        // fail gracelessly
+        self.0.upgrade().unwrap()
+    }
+}
+
+impl<T> From<&ArcTex<T>> for WeakArcTex<T> {
+    fn from(value: &ArcTex<T>) -> Self {
+        Self(Arc::downgrade(value))
+    }
+}
+
+impl<T> From<ArcTex<T>> for WeakArcTex<T> {
+    fn from(value: ArcTex<T>) -> Self {
+        Self(Arc::downgrade(&value))
+    }
 }

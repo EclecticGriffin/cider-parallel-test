@@ -51,6 +51,7 @@ calyx-frontend = { path = "../calyx-frontend" }
 rayon = "1.8"
 #crossbeam = "0.8"
 parking_lot = "0.12"
+linked-hash-map = "0.5.6"
 
 [dev-dependencies]
 proptest = "1.0.0"

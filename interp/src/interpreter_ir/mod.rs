@@ -11,8 +11,13 @@
 mod component;
 mod control;
 
+mod structure;
+mod translator;
+
 pub use component::Component;
 pub use control::{Control, Empty, Enable, If, Invoke, Par, Seq, While};
+// TODO: De-glob this when ready
+pub use structure::*;
 
 use std::{rc::Rc, sync::Arc};
 pub type ComponentCtx = Arc<Vec<Arc<component::Component>>>;

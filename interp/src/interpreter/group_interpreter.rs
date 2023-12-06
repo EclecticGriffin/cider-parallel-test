@@ -206,7 +206,8 @@ impl AssignmentInterpreter {
         // only used when compiled with change-based-sim feature
         let mut first_iteration = true;
 
-        let mut updates_list = vec![];
+        let mut updates_list: Vec<(Rc<std::cell::RefCell<ir::Port>>, Value)> =
+            vec![];
 
         // this unwrap is safe
         while self.val_changed.unwrap() {
@@ -232,64 +233,64 @@ impl AssignmentInterpreter {
                 }
             };
 
-            // compute all updates from the assignments
-            (*self.cont_assigns)
-                .clone()
-                .par_iter()
-                .for_each(|assignment| {
-                    if self.state.eval_guard(&assignment.guard)? {
-                        let pa = PortAssignment::new(assignment);
-                        //first check nothing has been assigned to this destination yet
-                        if let Some(prior_assign) = assigned_ports.get(&pa) {
-                            let s_orig = prior_assign.get_assignment();
-                            let s_conf = pa.get_assignment();
+            // // compute all updates from the assignments
+            // (*self.cont_assigns)
+            //     .clone()
+            //     .par_iter()
+            //     .for_each(|assignment| {
+            //         if self.state.eval_guard(&assignment.guard)? {
+            //             let pa = PortAssignment::new(assignment);
+            //             //first check nothing has been assigned to this destination yet
+            //             if let Some(prior_assign) = assigned_ports.get(&pa) {
+            //                 let s_orig = prior_assign.get_assignment();
+            //                 let s_conf = pa.get_assignment();
 
-                            let dst = assignment.dst.borrow();
+            //                 let dst = assignment.dst.borrow();
 
-                            return Err(
-                                InterpreterError::conflicting_assignments(
-                                    dst.name,
-                                    dst.get_parent_name(),
-                                    s_orig,
-                                    s_conf,
-                                )
-                                .into(),
-                            );
-                        }
-                        //now add to the HS, because we are assigning
-                        //regardless of whether value has changed this is still a
-                        //value driving the port
-                        assigned_ports.insert(pa);
-                        //ok now proceed
-                        //the below (get) attempts to get from working_env HM first, then
-                        //backing_env Smoosher. What does it mean for the value to be in HM?
-                        //That it's a locked value?
-                        let old_val =
-                            self.state.get_from_port(&assignment.dst.borrow());
-                        let new_val_ref =
-                            self.state.get_from_port(&assignment.src.borrow());
-                        // no need to make updates if the value has not changed
+            //                 return Err(
+            //                     InterpreterError::conflicting_assignments(
+            //                         dst.name,
+            //                         dst.get_parent_name(),
+            //                         s_orig,
+            //                         s_conf,
+            //                     )
+            //                     .into(),
+            //                 );
+            //             }
+            //             //now add to the HS, because we are assigning
+            //             //regardless of whether value has changed this is still a
+            //             //value driving the port
+            //             assigned_ports.insert(pa);
+            //             //ok now proceed
+            //             //the below (get) attempts to get from working_env HM first, then
+            //             //backing_env Smoosher. What does it mean for the value to be in HM?
+            //             //That it's a locked value?
+            //             let old_val =
+            //                 self.state.get_from_port(&assignment.dst.borrow());
+            //             let new_val_ref =
+            //                 self.state.get_from_port(&assignment.src.borrow());
+            //             // no need to make updates if the value has not changed
 
-                        if old_val != new_val_ref {
-                            let port = assignment.dst.clone(); // Rc clone
-                            let new_val = new_val_ref.clone();
+            //             if old_val != new_val_ref {
+            //                 let port = assignment.dst.clone(); // Rc clone
+            //                 let new_val = new_val_ref.clone();
 
-                            let pref = port.borrow();
+            //                 let pref = port.borrow();
 
-                            if let ir::PortParent::Cell(cell) = &pref.parent {
-                                let cell_rrc = cell.upgrade();
-                                if cells_to_run_set.insert(cell_rrc.as_raw()) {
-                                    cells_to_run_rrc.push(cell_rrc)
-                                }
-                            }
+            //                 if let ir::PortParent::Cell(cell) = &pref.parent {
+            //                     let cell_rrc = cell.upgrade();
+            //                     if cells_to_run_set.insert(cell_rrc.as_raw()) {
+            //                         cells_to_run_rrc.push(cell_rrc)
+            //                     }
+            //                 }
 
-                            drop(pref);
+            //                 drop(pref);
 
-                            updates_list.push((port, new_val)); //no point in rewriting same value to this list
-                            self.val_changed = Some(true);
-                        }
-                    }
-                });
+            //                 updates_list.push((port, new_val)); //no point in rewriting same value to this list
+            //                 self.val_changed = Some(true);
+            //             }
+            //         }
+            //     });
 
             let assigned_const_ports: HashSet<_> = assigned_ports
                 .iter()

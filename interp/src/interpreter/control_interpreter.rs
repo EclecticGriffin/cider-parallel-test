@@ -609,10 +609,12 @@ impl Interpreter for IfInterpreter {
 
                     let env = interp.deconstruct()?;
 
+                    let ctrl_read = self.ctrl_if.read();
+
                     let target = if branch_condition {
-                        &self.ctrl_if.read().tbranch
+                        &ctrl_read.tbranch
                     } else {
-                        &self.ctrl_if.read().fbranch
+                        &ctrl_read.fbranch
                     };
 
                     let interp = ControlInterpreter::new(
@@ -636,10 +638,12 @@ impl Interpreter for IfInterpreter {
                         .get_from_port(&*self.ctrl_if.read().port.read())
                         .as_bool();
 
+                    let ctrl_read = &self.ctrl_if.read();
+
                     let target = if branch_condition {
-                        &self.ctrl_if.read().tbranch
+                        &ctrl_read.tbranch
                     } else {
-                        &self.ctrl_if.read().fbranch
+                        &ctrl_read.fbranch
                     };
 
                     let interp = ControlInterpreter::new(
@@ -1072,6 +1076,7 @@ impl InvokeInterpreter {
         );
 
         drop(comp_cell);
+        drop(invoke);
 
         Self {
             invoke: invoke_ref,
@@ -1260,11 +1265,11 @@ impl StructuralInterpreter {
         comp: &Arc<iir::Component>,
         env: InterpreterState,
     ) -> Self {
-        let comp_sig = comp.signature.borrow();
+        let comp_sig = comp.signature.read();
         let done_port =
             comp_sig.get_unique_with_attr(ir::NumAttr::Done).unwrap();
         let done_raw = done_port.as_raw();
-        let continuous = Rc::clone(&comp.continuous_assignments);
+        let continuous = Arc::clone(&comp.continuous_assignments);
         let assigns: Vec<ir::Assignment<ir::Nothing>> = vec![];
 
         let interp = AssignmentInterpreter::new(

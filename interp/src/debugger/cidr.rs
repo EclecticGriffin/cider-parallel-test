@@ -443,7 +443,7 @@ impl Debugger {
                             // cannot find
                         }
                     } else if let Some(port) =
-                        current_env.get_comp().signature.borrow().find(target)
+                        current_env.get_comp().signature.read().find(target)
                     {
                         return Ok(print_port(
                             &port,

@@ -86,7 +86,7 @@ impl ComponentInterpreter {
     ) -> Self {
         let (mut inputs, mut outputs) = (Vec::new(), Vec::new());
 
-        for port in comp.signature.borrow().ports.iter() {
+        for port in comp.signature.read().ports.iter() {
             let pt_ref = port.borrow();
             match &pt_ref.direction {
                 ir::Direction::Input => outputs.push(port.clone()),

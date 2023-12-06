@@ -499,7 +499,7 @@ impl InterpreterState {
     fn construct_port_map(comp: &iir::Component) -> PortValMap {
         let mut map = HashMap::new();
 
-        for port in comp.signature.borrow().ports.iter() {
+        for port in comp.signature.read().ports.iter() {
             let pt: &ir::Port = &port.borrow();
             map.insert(pt as ConstPort, Value::zeroes(pt.width as usize));
         }
