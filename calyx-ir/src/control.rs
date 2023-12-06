@@ -316,7 +316,7 @@ impl GetAttributes for StaticInvoke {
 }
 
 /// Data for the `empty` control statement.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub struct Empty {
     pub attributes: Attributes,
@@ -597,7 +597,7 @@ impl Control {
     pub fn take_static_control(&mut self) -> StaticControl {
         let empty = Control::empty();
         let control = std::mem::replace(self, empty);
-        let Control::Static(static_control) = control  else {
+        let Control::Static(static_control) = control else {
             unreachable!("Called take_static_control on non-static control")
         };
         static_control

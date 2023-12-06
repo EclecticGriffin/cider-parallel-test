@@ -1,12 +1,35 @@
-use calyx_ir::Control as CalyxControl;
-use calyx_ir::{self as ir, Attributes, CombGroup, Port, RRC};
+use calyx_ir::{self as orig_ir, Attributes, Control as CalyxControl, RRC};
+use calyx_utils::Id;
 
-use std::rc::Rc;
+use std::sync::Arc;
 
 // These IR constructs are unchanged but are here re-exported for consistency
-pub use calyx_ir::{Empty, Enable, Invoke};
+pub use calyx_ir::Empty;
 
 use crate::utils::{arctex, ArcTex};
+
+use super::{translator::TranslationMap, Cell, CombGroup, Group, Port};
+
+/// Data for the `enable` control statement.
+#[derive(Debug)]
+pub struct Enable {
+    /// List of components to run.
+    pub group: ArcTex<Group>,
+    /// Attributes attached to this control statement.
+    pub attributes: Attributes,
+}
+
+impl Enable {
+    pub(crate) fn from_ir(
+        original: &orig_ir::Enable,
+        translator: &mut TranslationMap,
+    ) -> Self {
+        Self {
+            group: translator.get_group(&original.group),
+            attributes: original.attributes.clone(),
+        }
+    }
+}
 
 /// Data for the `seq` control statement.
 #[derive(Debug)]
@@ -17,6 +40,22 @@ pub struct Seq {
     pub attributes: Attributes,
 }
 
+impl Seq {
+    pub(crate) fn from_ir(
+        original: &orig_ir::Seq,
+        translator: &mut TranslationMap,
+    ) -> Self {
+        Self {
+            stmts: original
+                .stmts
+                .iter()
+                .map(|x| Control::from_ir(x, translator))
+                .collect(),
+            attributes: original.attributes.clone(),
+        }
+    }
+}
+
 /// Data for the `par` control statement.
 #[derive(Debug)]
 pub struct Par {
@@ -24,6 +63,22 @@ pub struct Par {
     pub stmts: Vec<Control>,
     /// Attributes attached to this control statement.
     pub attributes: Attributes,
+}
+
+impl Par {
+    pub(crate) fn from_ir(
+        original: &orig_ir::Par,
+        translator: &mut TranslationMap,
+    ) -> Self {
+        Self {
+            stmts: original
+                .stmts
+                .iter()
+                .map(|x| Control::from_ir(x, translator))
+                .collect(),
+            attributes: original.attributes.clone(),
+        }
+    }
 }
 
 /// Data for the `if` control statement.
@@ -41,6 +96,24 @@ pub struct If {
     pub attributes: Attributes,
 }
 
+impl If {
+    pub(crate) fn from_ir(
+        original: &orig_ir::If,
+        translator: &mut TranslationMap,
+    ) -> Self {
+        Self {
+            port: translator.get_port(&original.port),
+            cond: original
+                .cond
+                .as_ref()
+                .map(|x| translator.get_comb_group(&x)),
+            tbranch: Control::from_ir(&original.tbranch, translator),
+            fbranch: Control::from_ir(&original.fbranch, translator),
+            attributes: original.attributes.clone(),
+        }
+    }
+}
+
 /// Data for the `if` control statement.
 #[derive(Debug)]
 pub struct While {
@@ -54,82 +127,122 @@ pub struct While {
     pub attributes: Attributes,
 }
 
+impl While {
+    pub(crate) fn from_ir(
+        original: &orig_ir::While,
+        translator: &mut TranslationMap,
+    ) -> Self {
+        Self {
+            port: translator.get_port(&original.port),
+            cond: original
+                .cond
+                .as_ref()
+                .map(|x| translator.get_comb_group(&x)),
+            body: Control::from_ir(&original.body, translator),
+            attributes: original.attributes.clone(),
+        }
+    }
+}
+
+type PortMap = Vec<(Id, ArcTex<Port>)>;
+type CellMap = Vec<(Id, ArcTex<Cell>)>;
+
+/// Data for an `invoke` control statement.
+#[derive(Debug)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+pub struct Invoke {
+    /// Cell that is being invoked.
+    pub comp: ArcTex<Cell>,
+    /// Mapping from name of input ports in `comp` to the port connected to it.
+    pub inputs: PortMap,
+    /// Mapping from name of output ports in `comp` to the port connected to it.
+    pub outputs: PortMap,
+    /// Attributes attached to this control statement.
+    pub attributes: Attributes,
+    /// Optional combinational group that is active when the invoke is active.
+    pub comb_group: Option<ArcTex<CombGroup>>,
+    /// Mapping from name of external cell in 'comp' to the cell connected to it.
+    pub ref_cells: CellMap,
+}
+
+impl Invoke {
+    pub(crate) fn from_ir(
+        original: &orig_ir::Invoke,
+        translator: &mut TranslationMap,
+    ) -> Self {
+        Self {
+            comp: translator.get_cell(&original.comp),
+            inputs: original
+                .inputs
+                .iter()
+                .map(|(id, x)| (*id, translator.get_port(x)))
+                .collect(),
+            outputs: original
+                .outputs
+                .iter()
+                .map(|(id, x)| (*id, translator.get_port(x)))
+                .collect(),
+            attributes: original.attributes.clone(),
+            comb_group: original
+                .comb_group
+                .as_ref()
+                .map(|x| translator.get_comb_group(x)),
+            ref_cells: original
+                .ref_cells
+                .iter()
+                .map(|(id, x)| (*id, translator.get_cell(x)))
+                .collect(),
+        }
+    }
+}
+
 /// Control AST nodes.
 #[derive(Debug, Clone)]
 pub enum Control {
     /// Represents sequential composition of control statements.
-    Seq(ArcTex<Seq>),
+    Seq(Arc<Seq>),
     /// Represents parallel composition of control statements.
-    Par(ArcTex<Par>),
+    Par(Arc<Par>),
     /// Standard imperative if statement
-    If(ArcTex<If>),
+    If(Arc<If>),
     /// Standard imperative while statement
-    While(ArcTex<While>),
+    While(Arc<While>),
     /// Invoke a sub-component with the given port assignments
-    Invoke(ArcTex<Invoke>),
+    Invoke(Arc<Invoke>),
     /// Runs the control for a list of subcomponents.
-    Enable(ArcTex<Enable>),
+    Enable(Arc<Enable>),
     /// Control statement that does nothing.
-    Empty(ArcTex<Empty>),
+    Empty(Arc<Empty>),
 }
 
-impl From<CalyxControl> for Control {
-    fn from(cc: CalyxControl) -> Self {
+impl Control {
+    fn from_ir(cc: &CalyxControl, translator: &mut TranslationMap) -> Self {
         match cc {
-            CalyxControl::Seq(s) => Control::Seq(arctex(s.into())),
-            CalyxControl::Par(p) => Control::Par(arctex(p.into())),
-            CalyxControl::If(i) => Control::If(arctex(i.into())),
-            CalyxControl::While(wh) => Control::While(arctex(wh.into())),
-            CalyxControl::Invoke(invoke) => Control::Invoke(arctex(invoke)),
-            CalyxControl::Enable(enable) => Control::Enable(arctex(enable)),
+            CalyxControl::Seq(s) => {
+                Control::Seq(Seq::from_ir(s, translator).into())
+            }
+            CalyxControl::Par(p) => {
+                Control::Par(Par::from_ir(p, translator).into())
+            }
+            CalyxControl::If(i) => {
+                Control::If(If::from_ir(i, translator).into())
+            }
+            CalyxControl::While(wh) => {
+                Control::While(While::from_ir(wh, translator).into())
+            }
+            CalyxControl::Invoke(invoke) => {
+                Control::Invoke(Invoke::from_ir(invoke, translator).into())
+            }
+            CalyxControl::Enable(enable) => {
+                Control::Enable(Enable::from_ir(enable, translator).into())
+            }
             CalyxControl::Static(_) => {
                 todo!("interpreter does not yet support static")
             }
             CalyxControl::Repeat(_) => {
                 todo!("interpreter does not yet support repeat")
             }
-            CalyxControl::Empty(empty) => Control::Empty(arctex(empty)),
-        }
-    }
-}
-
-impl From<ir::Seq> for Seq {
-    fn from(seq: ir::Seq) -> Self {
-        Self {
-            stmts: seq.stmts.into_iter().map(|x| x.into()).collect(),
-            attributes: seq.attributes,
-        }
-    }
-}
-
-impl From<ir::Par> for Par {
-    fn from(par: ir::Par) -> Self {
-        Self {
-            stmts: par.stmts.into_iter().map(|x| x.into()).collect(),
-            attributes: par.attributes,
-        }
-    }
-}
-
-impl From<ir::If> for If {
-    fn from(i: ir::If) -> Self {
-        Self {
-            port: arctex(i.port.borrow().clone()),
-            cond: i.cond.map(|c| arctex(c.borrow().clone())),
-            tbranch: (*i.tbranch).into(),
-            fbranch: (*i.fbranch).into(),
-            attributes: i.attributes,
-        }
-    }
-}
-
-impl From<ir::While> for While {
-    fn from(wh: ir::While) -> Self {
-        Self {
-            port: arctex(wh.port.borrow().clone()),
-            cond: wh.cond.map(|c| arctex(c.borrow().clone())),
-            body: (*wh.body).into(),
-            attributes: wh.attributes,
+            CalyxControl::Empty(empty) => Control::Empty(empty.clone().into()),
         }
     }
 }
