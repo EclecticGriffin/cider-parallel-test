@@ -1,7 +1,7 @@
 use crate::interpreter_ir::*;
 use crate::values::Value;
 use calyx_ir::{Binding, Id, Nothing, RRC};
-use parking_lot::{Mutex, RwLock};
+use parking_lot::{RwLock, RwLockReadGuard};
 use serde::Deserialize;
 use std::fs;
 use std::hash::{Hash, Hasher};
@@ -264,5 +264,17 @@ impl<T> From<*const T> for ArcTexOrConst<T> {
 impl<T> From<ArcTex<T>> for ArcTexOrConst<T> {
     fn from(v: ArcTex<T>) -> Self {
         Self::Arc(v)
+    }
+}
+
+impl<'a, T> AsRaw<T> for RwLockReadGuard<'a, T> {
+    fn as_raw(&self) -> *const T {
+        &**self as *const T
+    }
+}
+
+impl<'a, T> AsRaw<T> for &RwLockReadGuard<'a, T> {
+    fn as_raw(&self) -> *const T {
+        &***self as *const T
     }
 }

@@ -4,7 +4,7 @@ use ahash::HashMap;
 use calyx_ir::{self as orig_ir, RRC};
 
 #[derive(Debug, Default)]
-pub(crate) struct TranslationMap {
+pub struct TranslationMap {
     cell_map: HashMap<*const orig_ir::Cell, ArcTex<Cell>>,
     port_map: HashMap<*const orig_ir::Port, ArcTex<Port>>,
     group_map: HashMap<*const orig_ir::Group, ArcTex<Group>>,

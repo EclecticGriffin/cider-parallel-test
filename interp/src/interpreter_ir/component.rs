@@ -42,7 +42,10 @@ impl Component {
         self.cells.find(name)
     }
 
-    fn from_ir(cc: &CalyxComponent, translator: &mut TranslationMap) -> Self {
+    pub fn from_ir(
+        cc: &CalyxComponent,
+        translator: &mut TranslationMap,
+    ) -> Self {
         Self {
             name: cc.name,
             signature: translator.get_cell(&cc.signature),

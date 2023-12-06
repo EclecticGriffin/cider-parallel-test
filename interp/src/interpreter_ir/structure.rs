@@ -281,6 +281,69 @@ impl Cell {
             CellType::Constant { .. } => None,
         }
     }
+
+    /// Return the value associated with this attribute key.
+    pub fn get_attribute<A: Into<Attribute>>(&self, attr: A) -> Option<u64> {
+        self.attributes.get(attr.into())
+    }
+
+    /// Return all ports that have the attribute `attr`.
+    pub fn find_all_with_attr<A>(
+        &self,
+        attr: A,
+    ) -> impl Iterator<Item = ArcTex<Port>> + '_
+    where
+        A: Into<Attribute>,
+    {
+        let attr = attr.into();
+        self.ports
+            .iter()
+            .filter(move |&p| p.read().attributes.has(attr))
+            .map(Arc::clone)
+    }
+
+    /// Return the unique port with the given attribute.
+    /// If multiple ports have the same attribute, then we panic.
+    /// If there are not ports with the give attribute, then we return None.
+    pub fn find_unique_with_attr<A>(
+        &self,
+        attr: A,
+    ) -> calyx_utils::CalyxResult<Option<ArcTex<Port>>>
+    where
+        A: Into<Attribute>,
+    {
+        let attr = attr.into();
+        let mut ports = self.find_all_with_attr(attr);
+        if let Some(port) = ports.next() {
+            if ports.next().is_some() {
+                Err(calyx_utils::Error::malformed_structure(format!(
+                    "Multiple ports with attribute `{}` found on cell `{}`",
+                    attr, self.name
+                )))
+            } else {
+                Ok(Some(port))
+            }
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Get the unique port with the given attribute.
+    /// Panic if no port with the attribute is found and returns an error if multiple ports with the attribute are found.
+    pub fn get_unique_with_attr<A>(
+        &self,
+        attr: A,
+    ) -> calyx_utils::CalyxResult<ArcTex<Port>>
+    where
+        A: Into<Attribute> + std::fmt::Display + Copy,
+    {
+        Ok(self.find_unique_with_attr(attr)?.unwrap_or_else(|| {
+            panic!(
+                "Port with attribute `{attr}' not found on cell `{}'",
+                self.name,
+            )
+        }))
+    }
 }
 
 /// An assignment guard which has pointers to the various ports from which it reads.

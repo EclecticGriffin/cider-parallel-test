@@ -426,11 +426,11 @@ impl Debugger {
                     let prior = &print_list[idx - 1];
 
                     if let Some(parent) = current_env.get_cell(*prior) {
-                        let parent_ref = parent.borrow();
+                        let parent_ref = parent.read();
                         let pt = parent_ref
                             .ports()
                             .iter()
-                            .find(|x| x.borrow().name == target);
+                            .find(|x| x.read().name == target);
                         if let Some(port) = pt {
                             return Ok(print_port(
                                 port,
@@ -488,12 +488,12 @@ impl Debugger {
 }
 
 fn print_cell(
-    target: &RRC<ir::Cell>,
+    target: &ArcTex<iir::Cell>,
     state: &StateView,
     code: &Option<PrintCode>,
     mode: &PrintMode,
 ) -> String {
-    let cell_ref = target.borrow();
+    let cell_ref = target.read();
 
     match mode {
         PrintMode::State => {
@@ -522,7 +522,7 @@ fn print_cell(
                     output,
                     "{}  {} = {}",
                     SPACING,
-                    port.borrow().name.red(),
+                    port.read().name.red(),
                     if let Some(code) = code {
                         match code {
                             PrintCode::Unsigned => {
@@ -551,7 +551,7 @@ fn print_cell(
 }
 
 fn print_port(
-    target: &ArcTex<ir::Port>,
+    target: &ArcTex<iir::Port>,
     state: &StateView,
     prior_name: Option<ir::Id>,
     code: &Option<PrintCode>,

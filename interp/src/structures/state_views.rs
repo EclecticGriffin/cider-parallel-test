@@ -241,7 +241,7 @@ impl<'a> StateView<'a> {
 
     /// Return an RRC for the given cell if it exists within the root component
     /// of the environment. Otherwise None
-    pub fn get_cell<S>(&self, name: S) -> Option<RRC<ir::Cell>>
+    pub fn get_cell<S>(&self, name: S) -> Option<ArcTex<iir::Cell>>
     where
         S: Into<ir::Id> + Clone,
     {
@@ -289,7 +289,7 @@ impl<'a> StateView<'a> {
                                 )
                             })
                             .collect();
-                        (cell.borrow().name(), inner_map)
+                        (cell.read().name(), inner_map)
                     })
                     .collect();
                 (comp.name, inner_map)
@@ -303,11 +303,11 @@ impl<'a> StateView<'a> {
                     .cells
                     .iter()
                     .filter_map(|cell_ref| {
-                        let cell = cell_ref.borrow();
+                        let cell = cell_ref.read();
                         if cell.get_attribute(ir::BoolAttr::External).is_some()
                         {
-                            if let Some(prim) = cell_prim_map
-                                .get(&(&cell as &ir::Cell as ConstCell))
+                            if let Some(prim) =
+                                cell_prim_map.get(&(cell.as_raw()))
                             {
                                 if !prim.is_comb() {
                                     return Some((

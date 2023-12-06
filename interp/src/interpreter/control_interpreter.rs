@@ -1052,13 +1052,16 @@ impl InvokeInterpreter {
             assignment_vec.extend(w_ref.assignments.iter().cloned());
         }
 
-        let go_port = comp_cell.get_unique_with_attr(ir::NumAttr::Go).unwrap();
+        let go_port = comp_cell
+            .get_unique_with_attr(calyx_ir::NumAttr::Go)
+            .unwrap();
         // insert one into the go_port
         // should probably replace with an actual assignment from a constant one
         env.insert(go_port, Value::bit_high());
 
-        let comp_done_port =
-            comp_cell.get_unique_with_attr(ir::NumAttr::Done).unwrap();
+        let comp_done_port = comp_cell
+            .get_unique_with_attr(calyx_ir::NumAttr::Done)
+            .unwrap();
         let interp = AssignmentInterpreter::new(
             env,
             comp_done_port.into(),

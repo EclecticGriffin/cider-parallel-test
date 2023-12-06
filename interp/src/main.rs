@@ -9,7 +9,7 @@ use interp::{
     environment::InterpreterState,
     errors::{InterpreterError, InterpreterResult},
     interpreter::ComponentInterpreter,
-    interpreter_ir as iir,
+    interpreter_ir::{self as iir, Component, TranslationMap},
 };
 use rustyline::error::ReadlineError;
 use slog::warn;
@@ -167,10 +167,12 @@ fn main() -> InterpreterResult<()> {
 
     let metadata = ctx.metadata;
 
+    let mut transformer = TranslationMap::new();
+
     let components: iir::ComponentCtx = Arc::new(
         ctx.components
-            .into_iter()
-            .map(|x| Arc::new(x.into()))
+            .iter()
+            .map(|x| Arc::new(Component::from_ir(x, &mut transformer)))
             .collect(),
     );
 
