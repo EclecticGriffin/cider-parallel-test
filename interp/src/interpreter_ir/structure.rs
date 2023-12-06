@@ -128,7 +128,7 @@ pub struct Assignment<T> {
     pub attributes: Attributes,
 }
 
-impl<T> Assignment<T> {
+impl<T: Clone> Assignment<T> {
     pub(crate) fn from_ir(
         original: &orig_ir::Assignment<T>,
         translator: &mut TranslationMap,
@@ -196,12 +196,32 @@ pub enum Guard<T> {
     Info(T),
 }
 
-impl<T> Guard<T> {
+impl<T: Clone> Guard<T> {
     pub(crate) fn from_ir(
         original: &orig_ir::Guard<T>,
         translator: &mut TranslationMap,
     ) -> Self {
-        todo!()
+        match original {
+            orig_ir::Guard::Or(l, r) => Guard::Or(
+                Guard::from_ir(l, translator).into(),
+                Guard::from_ir(r, translator).into(),
+            ),
+            orig_ir::Guard::And(l, r) => Guard::And(
+                Guard::from_ir(l, translator).into(),
+                Guard::from_ir(r, translator).into(),
+            ),
+            orig_ir::Guard::Not(n) => {
+                Guard::Not(Guard::from_ir(n, translator).into())
+            }
+            orig_ir::Guard::True => Guard::True,
+            orig_ir::Guard::CompOp(op, l, r) => Guard::CompOp(
+                op.clone(),
+                translator.get_port(l),
+                translator.get_port(r),
+            ),
+            orig_ir::Guard::Port(p) => Guard::Port(translator.get_port(p)),
+            orig_ir::Guard::Info(i) => Guard::Info(i.clone()),
+        }
     }
 }
 
