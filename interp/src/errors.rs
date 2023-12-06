@@ -1,5 +1,5 @@
-use crate::utils::assignment_to_string;
 use crate::values::Value;
+use crate::{interpreter_ir, utils::assignment_to_string};
 use calyx_ir::{self as ir, Assignment, Id};
 use calyx_utils::Error as CalyxError;
 use rustyline::error::ReadlineError;
@@ -187,18 +187,23 @@ impl From<CalyxError> for InterpreterError {
     }
 }
 
-impl From<crate::structures::stk_env::CollisionError<*const ir::Port, Value>>
-    for InterpreterError
+impl
+    From<
+        crate::structures::stk_env::CollisionError<
+            *const interpreter_ir::Port,
+            Value,
+        >,
+    > for InterpreterError
 {
     fn from(
         err: crate::structures::stk_env::CollisionError<
-            *const calyx_ir::Port,
+            *const interpreter_ir::Port,
             crate::values::Value,
         >,
     ) -> Self {
         // when the error is first raised, the IR has not yet been deconstructed, so this
         // dereference is safe
-        let port: &ir::Port = unsafe { &*err.0 };
+        let port: &interpreter_ir::Port = unsafe { &*err.0 };
         let parent_name = port.get_parent_name();
         let port_name = port.name;
         Self::ParOverlap {

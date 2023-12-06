@@ -216,7 +216,10 @@ pub enum Control {
 }
 
 impl Control {
-    fn from_ir(cc: &CalyxControl, translator: &mut TranslationMap) -> Self {
+    pub(crate) fn from_ir(
+        cc: &CalyxControl,
+        translator: &mut TranslationMap,
+    ) -> Self {
         match cc {
             CalyxControl::Seq(s) => {
                 Control::Seq(Seq::from_ir(s, translator).into())

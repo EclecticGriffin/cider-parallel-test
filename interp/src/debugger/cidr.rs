@@ -4,13 +4,13 @@ use super::{
     interactive_errors::DebuggerError,
     io_utils::Input,
 };
-use crate::debugger::source::SourceMap;
 use crate::environment::{InterpreterState, PrimitiveMap};
 use crate::errors::{InterpreterError, InterpreterResult};
 use crate::interpreter::{ComponentInterpreter, ConstCell, Interpreter};
 use crate::structures::names::{CompGroupName, ComponentQualifiedInstanceName};
 use crate::structures::state_views::StateView;
 use crate::utils::AsRaw;
+use crate::{debugger::source::SourceMap, utils::ArcTex};
 use crate::{interpreter_ir as iir, primitives::Serializable};
 
 use calyx_ir::{self as ir, Id, RRC};
@@ -551,12 +551,12 @@ fn print_cell(
 }
 
 fn print_port(
-    target: &RRC<ir::Port>,
+    target: &ArcTex<ir::Port>,
     state: &StateView,
     prior_name: Option<ir::Id>,
     code: &Option<PrintCode>,
 ) -> String {
-    let port_ref = target.borrow();
+    let port_ref = target.read();
     let parent_name = if let Some(prior) = prior_name {
         prior
     } else {

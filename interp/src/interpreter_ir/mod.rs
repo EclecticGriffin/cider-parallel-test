@@ -21,5 +21,4 @@ pub use structure::*;
 
 use std::{rc::Rc, sync::Arc};
 pub type ComponentCtx = Arc<Vec<Arc<component::Component>>>;
-pub type ContinuousAssignments =
-    Arc<Vec<calyx_ir::Assignment<calyx_ir::Nothing>>>;
+pub type ContinuousAssignments = Arc<Vec<Assignment<calyx_ir::Nothing>>>;

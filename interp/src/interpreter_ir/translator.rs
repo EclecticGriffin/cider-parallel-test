@@ -3,6 +3,7 @@ use crate::utils::{arctex, ArcTex, AsRaw};
 use ahash::HashMap;
 use calyx_ir::{self as orig_ir, RRC};
 
+#[derive(Debug, Default)]
 pub(crate) struct TranslationMap {
     cell_map: HashMap<*const orig_ir::Cell, ArcTex<Cell>>,
     port_map: HashMap<*const orig_ir::Port, ArcTex<Port>>,
@@ -11,6 +12,9 @@ pub(crate) struct TranslationMap {
 }
 
 impl TranslationMap {
+    pub fn new() -> Self {
+        Default::default()
+    }
     pub fn get_port(&mut self, target: &RRC<orig_ir::Port>) -> ArcTex<Port> {
         let key = target.as_raw();
         if let Some(x) = self.port_map.get(&key) {
@@ -56,5 +60,14 @@ impl TranslationMap {
             self.comb_group_map.insert(key, v.clone());
             v
         }
+    }
+
+    /// A convenience method that just invokes the assignment constructor with
+    /// the translator
+    pub fn get_assignment<T: Clone>(
+        &mut self,
+        target: &orig_ir::Assignment<T>,
+    ) -> Assignment<T> {
+        Assignment::from_ir(target, self)
     }
 }

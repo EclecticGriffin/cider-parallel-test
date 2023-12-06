@@ -1,8 +1,6 @@
 use super::group_interpreter::{finish_interpretation, AssignmentInterpreter};
 use super::utils::{get_done_port, get_go_port};
 use super::Interpreter;
-use crate::interpreter_ir as iir;
-use crate::logging::{new_sublogger, warn};
 use crate::structures::names::{
     ComponentQualifiedInstanceName, GroupQIN, GroupQualifiedInstanceName,
 };
@@ -18,25 +16,31 @@ use crate::{
     values::Value,
 };
 use crate::{errors::InterpreterError, utils::arctex};
-use calyx_ir::{self as ir, Assignment, Guard, RRC};
-use calyx_utils::WithPos;
+use crate::{
+    interpreter_ir::*,
+    logging::{new_sublogger, warn},
+};
+use calyx_ir::{self as orig_ir, RRC};
+use calyx_utils::{Id, WithPos};
+use orig_ir::Nothing;
 use std::rc::Rc;
 use std::{collections::HashSet, sync::Arc};
 
 /// The key to lookup for the position tags
-const POS_TAG: ir::Attribute = ir::Attribute::Num(ir::NumAttr::Pos);
+const POS_TAG: orig_ir::Attribute =
+    orig_ir::Attribute::Num(orig_ir::NumAttr::Pos);
 
 #[derive(Debug, Clone)]
 pub struct ComponentInfo {
-    pub continuous_assignments: iir::ContinuousAssignments,
-    pub input_ports: Arc<HashSet<*const ir::Port>>,
+    pub continuous_assignments: ContinuousAssignments,
+    pub input_ports: Arc<HashSet<*const Port>>,
     pub qin: ComponentQualifiedInstanceName,
 }
 
 impl ComponentInfo {
     pub fn new(
-        continuous_assignments: iir::ContinuousAssignments,
-        input_ports: Arc<HashSet<*const ir::Port>>,
+        continuous_assignments: ContinuousAssignments,
+        input_ports: Arc<HashSet<*const Port>>,
         qin: ComponentQualifiedInstanceName,
     ) -> Self {
         Self {
@@ -97,30 +101,26 @@ impl Interpreter for EmptyInterpreter {
 
 #[derive(Clone)]
 pub enum EnableHolder {
-    Enable(ArcTex<iir::Enable>),
-    Group(ArcTex<ir::Group>),
-    CombGroup(ArcTex<ir::CombGroup>),
-    Vec(ArcTex<Vec<ir::Assignment<ir::Nothing>>>),
+    Enable(Arc<Enable>),
+    Group(ArcTex<Group>),
+    CombGroup(ArcTex<CombGroup>),
+    Vec(Arc<Vec<Assignment<Nothing>>>),
 }
 
 impl EnableHolder {
-    fn done_port(&self) -> Option<RRC<ir::Port>> {
+    fn done_port(&self) -> Option<ArcTex<Port>> {
         match self {
             EnableHolder::Group(g) => Some(get_done_port(&g.read())),
             EnableHolder::CombGroup(_) | EnableHolder::Vec(_) => None,
-            EnableHolder::Enable(e) => {
-                Some(get_done_port(&e.read().group.borrow()))
-            }
+            EnableHolder::Enable(e) => Some(get_done_port(&e.group.read())),
         }
     }
 
-    fn go_port(&self) -> Option<RRC<ir::Port>> {
+    fn go_port(&self) -> Option<ArcTex<Port>> {
         match self {
             EnableHolder::Group(g) => Some(get_go_port(&g.read())),
             EnableHolder::CombGroup(_) | EnableHolder::Vec(_) => None,
-            EnableHolder::Enable(e) => {
-                Some(get_go_port(&e.read().group.borrow()))
-            }
+            EnableHolder::Enable(e) => Some(get_go_port(&e.group.read())),
         }
     }
 
@@ -129,56 +129,56 @@ impl EnableHolder {
             EnableHolder::Vec(_)
             | EnableHolder::CombGroup(_)
             | EnableHolder::Group(_) => None,
-            EnableHolder::Enable(e) => e.read().attributes.get(POS_TAG),
+            EnableHolder::Enable(e) => e.attributes.get(POS_TAG),
         }
     }
 }
 
-impl From<ArcTex<ir::Group>> for EnableHolder {
-    fn from(gr: ArcTex<ir::Group>) -> Self {
+impl From<ArcTex<Group>> for EnableHolder {
+    fn from(gr: ArcTex<Group>) -> Self {
         Self::Group(gr)
     }
 }
 
-impl From<ArcTex<ir::CombGroup>> for EnableHolder {
-    fn from(cb: ArcTex<ir::CombGroup>) -> Self {
+impl From<ArcTex<CombGroup>> for EnableHolder {
+    fn from(cb: ArcTex<CombGroup>) -> Self {
         Self::CombGroup(cb)
     }
 }
 
-impl From<&ArcTex<ir::Group>> for EnableHolder {
-    fn from(gr: &ArcTex<ir::Group>) -> Self {
+impl From<&ArcTex<Group>> for EnableHolder {
+    fn from(gr: &ArcTex<Group>) -> Self {
         Self::Group(Arc::clone(gr))
     }
 }
 
-impl From<&ArcTex<ir::CombGroup>> for EnableHolder {
-    fn from(cb: &ArcTex<ir::CombGroup>) -> Self {
+impl From<&ArcTex<CombGroup>> for EnableHolder {
+    fn from(cb: &ArcTex<CombGroup>) -> Self {
         Self::CombGroup(Arc::clone(cb))
     }
 }
 
-impl From<Vec<ir::Assignment<ir::Nothing>>> for EnableHolder {
-    fn from(v: Vec<ir::Assignment<ir::Nothing>>) -> Self {
-        Self::Vec(arctex(v))
+impl From<Vec<Assignment<Nothing>>> for EnableHolder {
+    fn from(v: Vec<Assignment<Nothing>>) -> Self {
+        Self::Vec(v.into())
     }
 }
 
-impl From<&ArcTex<iir::Enable>> for EnableHolder {
-    fn from(e: &ArcTex<iir::Enable>) -> Self {
+impl From<&Arc<Enable>> for EnableHolder {
+    fn from(e: &Arc<Enable>) -> Self {
         Self::Enable(e.clone())
     }
 }
 
-impl From<ArcTex<iir::Enable>> for EnableHolder {
-    fn from(e: ArcTex<iir::Enable>) -> Self {
+impl From<Arc<Enable>> for EnableHolder {
+    fn from(e: Arc<Enable>) -> Self {
         Self::Enable(e)
     }
 }
 
 pub struct EnableInterpreter {
     enable: EnableHolder,
-    group_name: Option<ir::Id>,
+    group_name: Option<Id>,
     interp: AssignmentInterpreter,
     qin: ComponentQualifiedInstanceName,
 }
@@ -186,9 +186,9 @@ pub struct EnableInterpreter {
 impl EnableInterpreter {
     pub fn new<E>(
         enable: E,
-        group_name: Option<ir::Id>,
+        group_name: Option<Id>,
         mut env: InterpreterState,
-        continuous: iir::ContinuousAssignments,
+        continuous: ContinuousAssignments,
         qin: &ComponentQualifiedInstanceName,
     ) -> Self
     where
@@ -220,7 +220,7 @@ impl EnableInterpreter {
 
         self.interp.reset()
     }
-    fn get(&self, port: impl AsRaw<ir::Port>) -> &Value {
+    fn get(&self, port: impl AsRaw<Port>) -> &Value {
         self.interp.get(port)
     }
 }
@@ -289,18 +289,18 @@ impl Default for SeqFsm {
 pub struct SeqInterpreter {
     internal_state: SeqFsm,
     info: ComponentInfo,
-    seq: ArcTex<iir::Seq>,
+    seq: Arc<Seq>,
 }
 impl SeqInterpreter {
     pub fn new(
-        seq: ArcTex<iir::Seq>,
+        seq: Arc<Seq>,
         env: InterpreterState,
         info: ComponentInfo,
     ) -> Self {
-        let internal_state = if seq.read().stmts.is_empty() {
+        let internal_state = if seq.stmts.is_empty() {
             SeqFsm::Done(env)
         } else {
-            let first = seq.read().stmts[0].clone();
+            let first = seq.stmts[0].clone();
             let interp = ControlInterpreter::new(first, env, &info);
             SeqFsm::Iterating(interp, 1)
         };
@@ -327,8 +327,8 @@ impl Interpreter for SeqInterpreter {
                 {
                     let env = interp.deconstruct()?;
 
-                    if idx < self.seq.read().stmts.len() {
-                        let next = self.seq.read().stmts[idx].clone();
+                    if idx < self.seq.stmts.len() {
+                        let next = self.seq.stmts[idx].clone();
                         let interp =
                             ControlInterpreter::new(next, env, &self.info);
                         self.internal_state =
@@ -422,8 +422,8 @@ impl Interpreter for SeqInterpreter {
                     std::mem::take(&mut self.internal_state)
                 {
                     let mut env = i.run_and_deconstruct()?;
-                    while idx < self.seq.read().stmts.len() {
-                        let next = self.seq.read().stmts[idx].clone();
+                    while idx < self.seq.stmts.len() {
+                        let next = self.seq.stmts[idx].clone();
                         idx += 1;
                         env = ControlInterpreter::new(next, env, &self.info)
                             .run_and_deconstruct()?;
@@ -455,13 +455,12 @@ pub struct ParInterpreter {
 
 impl ParInterpreter {
     pub fn new(
-        par: ArcTex<iir::Par>,
+        par: Arc<Par>,
         mut env: InterpreterState,
         info: ComponentInfo,
     ) -> Self {
         let mut env = env.force_fork();
         let interpreters = par
-            .read()
             .stmts
             .iter()
             .cloned()
@@ -563,17 +562,17 @@ impl Default for IfFsm {
 
 pub struct IfInterpreter {
     state: IfFsm,
-    ctrl_if: ArcTex<iir::If>,
+    ctrl_if: Arc<If>,
     info: ComponentInfo,
 }
 
 impl IfInterpreter {
     pub fn new(
-        ctrl_if: ArcTex<iir::If>,
+        ctrl_if: Arc<If>,
         env: InterpreterState,
         info: ComponentInfo,
     ) -> Self {
-        let state = if let Some(grp) = &ctrl_if.read().cond {
+        let state = if let Some(grp) = &ctrl_if.cond {
             let grp_ref = grp.read();
             let name = Some(grp_ref.name());
             let enable = EnableInterpreter::new(
@@ -605,11 +604,11 @@ impl Interpreter for IfInterpreter {
                 {
                     interp.converge()?;
                     let branch_condition =
-                        interp.get(&*self.ctrl_if.read().port.read()).as_bool();
+                        interp.get(&*self.ctrl_if.port.read()).as_bool();
 
                     let env = interp.deconstruct()?;
 
-                    let ctrl_read = self.ctrl_if.read();
+                    let ctrl_read = &self.ctrl_if;
 
                     let target = if branch_condition {
                         &ctrl_read.tbranch
@@ -634,11 +633,10 @@ impl Interpreter for IfInterpreter {
                 if let IfFsm::ConditionPort(env) =
                     std::mem::take(&mut self.state)
                 {
-                    let branch_condition = env
-                        .get_from_port(&*self.ctrl_if.read().port.read())
-                        .as_bool();
+                    let branch_condition =
+                        env.get_from_port(&*self.ctrl_if.port.read()).as_bool();
 
-                    let ctrl_read = &self.ctrl_if.read();
+                    let ctrl_read = &self.ctrl_if;
 
                     let target = if branch_condition {
                         &ctrl_read.tbranch
@@ -781,21 +779,20 @@ struct BoundValidator {
 
 pub struct WhileInterpreter {
     state: WhileFsm,
-    wh: ArcTex<iir::While>,
+    wh: Arc<While>,
     info: ComponentInfo,
     bound: Option<BoundValidator>,
 }
 
 impl WhileInterpreter {
     pub fn new(
-        ctrl_while: ArcTex<iir::While>,
+        ctrl_while: Arc<While>,
         env: InterpreterState,
         info: ComponentInfo,
     ) -> Self {
         let bound = ctrl_while
-            .read()
             .attributes
-            .get(ir::NumAttr::Bound)
+            .get(calyx_ir::NumAttr::Bound)
             .map(|target| BoundValidator { target, current: 0 });
 
         let mut out = Self {
@@ -810,7 +807,7 @@ impl WhileInterpreter {
 
     /// Utility method whichs handles a return to the appropriate condition state
     fn process_initial_state(&mut self, env: InterpreterState) {
-        if let Some(cond_grp) = &self.wh.read().cond {
+        if let Some(cond_grp) = &self.wh.cond {
             let grp_ref = cond_grp.read();
             let name = grp_ref.name();
             let interp = EnableInterpreter::new(
@@ -842,7 +839,6 @@ impl WhileInterpreter {
                     let current = bound_validator.current;
                     let line = self
                         .wh
-                        .read()
                         .attributes
                         .copy_span()
                         .into_option()
@@ -861,7 +857,6 @@ impl WhileInterpreter {
                     let current = bound_validator.current;
                     let line = self
                         .wh
-                        .read()
                         .attributes
                         .copy_span()
                         .into_option()
@@ -871,11 +866,8 @@ impl WhileInterpreter {
                 }
             }
 
-            let interp = ControlInterpreter::new(
-                self.wh.read().body.clone(),
-                env,
-                &self.info,
-            );
+            let interp =
+                ControlInterpreter::new(self.wh.body.clone(), env, &self.info);
 
             self.state = WhileFsm::Body(interp);
         }
@@ -892,7 +884,7 @@ impl Interpreter for WhileInterpreter {
                 {
                     interp.converge()?;
                     let branch_condition =
-                        interp.get(&*self.wh.read().port.read()).as_bool();
+                        interp.get(&*self.wh.port.read()).as_bool();
                     let env = interp.deconstruct()?;
 
                     self.process_branch(branch_condition, env);
@@ -905,9 +897,8 @@ impl Interpreter for WhileInterpreter {
             WhileFsm::CondPort(_) => {
                 if let WhileFsm::CondPort(env) = std::mem::take(&mut self.state)
                 {
-                    let branch_condition = env
-                        .get_from_port(&*self.wh.read().port.read())
-                        .as_bool();
+                    let branch_condition =
+                        env.get_from_port(&*self.wh.port.read()).as_bool();
                     self.process_branch(branch_condition, env);
                     Ok(())
                 } else {
@@ -1012,21 +1003,21 @@ impl Interpreter for WhileInterpreter {
     }
 }
 pub struct InvokeInterpreter {
-    invoke: ArcTex<iir::Invoke>,
+    invoke: Arc<Invoke>,
     assign_interp: AssignmentInterpreter,
     qin: ComponentQualifiedInstanceName,
 }
 
 impl InvokeInterpreter {
     pub fn new(
-        invoke_ref: ArcTex<iir::Invoke>,
+        invoke_ref: Arc<Invoke>,
         mut env: InterpreterState,
-        continuous_assignments: iir::ContinuousAssignments,
+        continuous_assignments: ContinuousAssignments,
         qin: ComponentQualifiedInstanceName,
     ) -> Self {
-        let mut assignment_vec: Vec<Assignment<ir::Nothing>> = vec![];
-        let invoke = invoke_ref.read();
-        let comp_cell = invoke.comp.borrow();
+        let mut assignment_vec: Vec<Assignment<Nothing>> = vec![];
+        let invoke = &invoke_ref;
+        let comp_cell = invoke.comp.read();
 
         if !invoke.ref_cells.is_empty() {
             todo!("Interpreter does not currently support ref-cells. Please run the compile-ref pass.")
@@ -1037,9 +1028,9 @@ impl InvokeInterpreter {
             let comp_input_port = comp_cell.get(input_port);
             assignment_vec.push(Assignment {
                 dst: comp_input_port,
-                src: Rc::clone(connection),
+                src: Arc::clone(connection),
                 guard: Guard::default().into(),
-                attributes: ir::Attributes::default(),
+                attributes: calyx_ir::Attributes::default(),
             });
         }
 
@@ -1047,16 +1038,16 @@ impl InvokeInterpreter {
         for (output_port, connection) in &invoke.outputs {
             let comp_output_port = comp_cell.get(output_port);
             assignment_vec.push(Assignment {
-                dst: Rc::clone(connection),
+                dst: Arc::clone(connection),
                 src: comp_output_port,
                 guard: Guard::default().into(),
-                attributes: ir::Attributes::default(),
+                attributes: calyx_ir::Attributes::default(),
             })
         }
 
         // insert with assignments, if present
         if let Some(with) = &invoke.comb_group {
-            let w_ref = with.borrow();
+            let w_ref = with.read();
             // TODO (Griffin): probably should avoid duplicating these.
             assignment_vec.extend(w_ref.assignments.iter().cloned());
         }
@@ -1101,10 +1092,9 @@ impl Interpreter for InvokeInterpreter {
         // set go low
         let go_port = self
             .invoke
-            .read()
             .comp
-            .borrow()
-            .get_unique_with_attr(ir::NumAttr::Go)
+            .read()
+            .get_unique_with_attr(calyx_ir::NumAttr::Go)
             .unwrap();
         // insert one into the go_port
         // should probably replace with an actual assignment from a constant one
@@ -1136,11 +1126,10 @@ impl Interpreter for InvokeInterpreter {
     fn get_active_tree(&self) -> Vec<ActiveTreeNode> {
         let name = GroupQualifiedInstanceName::new_phantom(
             &self.qin,
-            format!("invoke {}", self.invoke.read().comp.borrow().name())
-                .into(),
+            format!("invoke {}", self.invoke.comp.read().name()).into(),
         );
 
-        let pos_tag = self.invoke.read().attributes.get(POS_TAG);
+        let pos_tag = self.invoke.attributes.get(POS_TAG);
 
         vec![ActiveTreeNode::new(name.with_tag(pos_tag))]
     }
@@ -1174,24 +1163,26 @@ pub enum ControlInterpreter {
 
 impl ControlInterpreter {
     pub fn new(
-        control: iir::Control,
+        control: Control,
         env: InterpreterState,
         info: &ComponentInfo,
     ) -> Self {
         match control {
-            iir::Control::Seq(s) => {
+            Control::Seq(s) => {
                 Self::Seq(Box::new(SeqInterpreter::new(s, env, info.clone())))
             }
-            iir::Control::Par(par) => {
+            Control::Par(par) => {
                 Self::Par(Box::new(ParInterpreter::new(par, env, info.clone())))
             }
-            iir::Control::If(i) => {
+            Control::If(i) => {
                 Self::If(Box::new(IfInterpreter::new(i, env, info.clone())))
             }
-            iir::Control::While(w) => Self::While(Box::new(
-                WhileInterpreter::new(w, env, info.clone()),
-            )),
-            iir::Control::Invoke(i) => {
+            Control::While(w) => Self::While(Box::new(WhileInterpreter::new(
+                w,
+                env,
+                info.clone(),
+            ))),
+            Control::Invoke(i) => {
                 Self::Invoke(Box::new(InvokeInterpreter::new(
                     i,
                     env,
@@ -1199,8 +1190,8 @@ impl ControlInterpreter {
                     info.qin.clone(),
                 )))
             }
-            iir::Control::Enable(e) => {
-                let name = e.read().group.borrow().name();
+            Control::Enable(e) => {
+                let name = e.group.read().name();
                 Self::Enable(Box::new(EnableInterpreter::new(
                     e,
                     Some(name),
@@ -1209,7 +1200,7 @@ impl ControlInterpreter {
                     &info.qin,
                 )))
             }
-            iir::Control::Empty(_) => {
+            Control::Empty(_) => {
                 Self::Empty(Box::new(EmptyInterpreter::new(env)))
             }
         }
@@ -1256,21 +1247,22 @@ impl Interpreter for ControlInterpreter {
 
 pub struct StructuralInterpreter {
     interp: AssignmentInterpreter,
-    continuous: iir::ContinuousAssignments,
+    continuous: ContinuousAssignments,
     done_port: ConstPort,
 }
 
 impl StructuralInterpreter {
     pub fn from_component(
-        comp: &Arc<iir::Component>,
+        comp: &Arc<Component>,
         env: InterpreterState,
     ) -> Self {
         let comp_sig = comp.signature.read();
-        let done_port =
-            comp_sig.get_unique_with_attr(ir::NumAttr::Done).unwrap();
+        let done_port = comp_sig
+            .get_unique_with_attr(calyx_ir::NumAttr::Done)
+            .unwrap();
         let done_raw = done_port.as_raw();
         let continuous = Arc::clone(&comp.continuous_assignments);
-        let assigns: Vec<ir::Assignment<ir::Nothing>> = vec![];
+        let assigns: Vec<Assignment<calyx_ir::Nothing>> = vec![];
 
         let interp = AssignmentInterpreter::new(
             env,

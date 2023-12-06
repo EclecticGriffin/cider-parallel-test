@@ -1,6 +1,10 @@
-use calyx_frontend::{Attributes, Direction};
+use std::sync::Arc;
+
+use calyx_frontend::{Attribute, Attributes, Direction};
 use calyx_ir::{self as orig_ir, CellType, Nothing, PortComp, RRC};
-use calyx_utils::Id;
+use calyx_utils::{GetName, Id};
+use itertools::Itertools;
+use orig_ir::Canonical;
 use smallvec::SmallVec;
 
 use crate::utils::{ArcTex, WeakArcTex};
@@ -72,6 +76,18 @@ impl Port {
             attributes: orig.attributes.clone(),
         }
     }
+
+    /// Get the canonical representation for this Port.
+    pub fn canonical(&self) -> Canonical {
+        Canonical(self.get_parent_name(), self.name)
+    }
+    /// Gets name of parent object.
+    pub fn get_parent_name(&self) -> Id {
+        match &self.parent {
+            PortParent::Cell(cell) => cell.upgrade().read().name,
+            PortParent::Group(group) => group.upgrade().read().name,
+        }
+    }
 }
 
 /// A Group of assignments that perform a logical action.
@@ -108,6 +124,39 @@ impl Group {
             holes: orig.holes.iter().map(|x| translator.get_port(x)).collect(),
             attributes: orig.attributes.clone(),
         }
+    }
+
+    /// Get a reference to the named hole if it exists.
+    pub fn find<S>(&self, name: S) -> Option<ArcTex<Port>>
+    where
+        S: std::fmt::Display,
+        Id: PartialEq<S>,
+    {
+        self.holes
+            .iter()
+            .find(|&g| g.read().name == name)
+            .map(Arc::clone)
+    }
+
+    /// Get a reference to the named hole or panic.
+    pub fn get<S>(&self, name: S) -> ArcTex<Port>
+    where
+        S: std::fmt::Display + Clone,
+        Id: PartialEq<S>,
+    {
+        self.find(name.clone()).unwrap_or_else(|| {
+            panic!("Hole `{name}' not found on group `{}'", self.name)
+        })
+    }
+
+    pub fn name(&self) -> Id {
+        self.name
+    }
+}
+
+impl GetName for Group {
+    fn name(&self) -> Id {
+        self.name
     }
 }
 
@@ -158,6 +207,12 @@ pub struct Cell {
     reference: bool,
 }
 
+impl GetName for Cell {
+    fn name(&self) -> Id {
+        self.name
+    }
+}
+
 impl Cell {
     pub(crate) fn from_ir(
         original: &RRC<orig_ir::Cell>,
@@ -171,6 +226,59 @@ impl Cell {
             prototype: orig.prototype.clone(),
             attributes: orig.attributes.clone(),
             reference: orig.is_reference(),
+        }
+    }
+    /// Returns a reference to all [super::Port] attached to this cells.
+    pub fn ports(&self) -> &SmallVec<[ArcTex<Port>; 10]> {
+        &self.ports
+    }
+    /// Get a reference to the named port if it exists.
+    pub fn find<S>(&self, name: S) -> Option<ArcTex<Port>>
+    where
+        S: std::fmt::Display + Clone,
+        Id: PartialEq<S>,
+    {
+        self.ports
+            .iter()
+            .find(|&g| g.read().name == name)
+            .map(Arc::clone)
+    }
+
+    /// Get a reference to the named port and throw an error if it doesn't
+    /// exist.
+    pub fn get<S>(&self, name: S) -> ArcTex<Port>
+    where
+        S: std::fmt::Display + Clone,
+        Id: PartialEq<S>,
+    {
+        self.find(name.clone()).unwrap_or_else(|| {
+            panic!(
+                "Port `{name}' not found on cell `{}'. Known ports are: {}",
+                self.name,
+                self.ports
+                    .iter()
+                    .map(|p| p.read().name.to_string())
+                    .join(",")
+            )
+        })
+    }
+
+    pub fn name(&self) -> Id {
+        self.name
+    }
+    /// Get parameter binding from the prototype used to build this cell.
+    pub fn get_parameter<S>(&self, param: S) -> Option<u64>
+    where
+        Id: PartialEq<S>,
+    {
+        match &self.prototype {
+            CellType::Primitive { param_binding, .. } => param_binding
+                .iter()
+                .find(|(key, _)| *key == param)
+                .map(|(_, val)| *val),
+            CellType::Component { .. } => None,
+            CellType::ThisComponent => None,
+            CellType::Constant { .. } => None,
         }
     }
 }
@@ -253,5 +361,15 @@ impl CombGroup {
                 .collect(),
             attributes: orig.attributes.clone(),
         }
+    }
+
+    pub fn name(&self) -> Id {
+        self.name
+    }
+}
+
+impl GetName for CombGroup {
+    fn name(&self) -> Id {
+        self.name
     }
 }

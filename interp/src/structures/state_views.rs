@@ -15,7 +15,7 @@ use crate::{
     interpreter::ConstCell,
     interpreter_ir as iir,
     primitives::{Entry, Primitive, Serializable},
-    utils::AsRaw,
+    utils::{ArcTex, AsRaw},
     values::Value,
 };
 use calyx_ir::{self as ir, RRC};
@@ -77,7 +77,7 @@ impl<'inner> MutCompositeView<'inner> {
     /// issues)
     pub fn insert<P>(&mut self, port: P, value: Value)
     where
-        P: AsRaw<ir::Port>,
+        P: AsRaw<iir::Port>,
     {
         let raw = port.as_raw();
         self.0.insert(raw, value.clone());
@@ -102,7 +102,7 @@ impl<'a> From<MutCompositeView<'a>> for MutStateView<'a> {
 impl<'a> MutStateView<'a> {
     /// Updates the value of the given port to the given value for this state
     /// view.
-    pub fn insert<P: AsRaw<ir::Port>>(&mut self, port: P, value: Value) {
+    pub fn insert<P: AsRaw<iir::Port>>(&mut self, port: P, value: Value) {
         match self {
             MutStateView::Single(s) => s.insert(port, value),
             MutStateView::Composite(c) => c.insert(port, value),
@@ -133,7 +133,7 @@ impl<'a> StateView<'a> {
     /// # TODO (Griffin):
     /// This should probably have an option/result variant to surface the
     /// parallel disagreement more effectively and avoid erroring out
-    pub fn lookup<P: AsRaw<ir::Port>>(&self, target: P) -> &Value {
+    pub fn lookup<P: AsRaw<iir::Port>>(&self, target: P) -> &Value {
         match self {
             StateView::SingleView(sv) => sv.get_from_port(target),
             StateView::Composite(cv) => match cv.1.len() {
@@ -207,7 +207,7 @@ impl<'a> StateView<'a> {
 
     /// An accessor which looks up the representation of a the given cell's
     /// state, defaulting to [Serializable::Empty] if no state is present
-    pub fn get_cell_state<R: AsRaw<ir::Cell>>(
+    pub fn get_cell_state<R: AsRaw<iir::Cell>>(
         &self,
         cell: R,
         print_code: &PrintCode,
@@ -228,7 +228,7 @@ impl<'a> StateView<'a> {
 
     /// Return a vector RRCs for all cells (across any component) which have the given
     /// name
-    pub fn get_cells<S>(&self, name: S) -> Vec<RRC<ir::Cell>>
+    pub fn get_cells<S>(&self, name: S) -> Vec<ArcTex<iir::Cell>>
     where
         S: Into<ir::Id> + Clone,
     {
@@ -269,15 +269,15 @@ impl<'a> StateView<'a> {
                     .iter()
                     .map(|cell| {
                         let inner_map: BTreeMap<_, _> = cell
-                            .borrow()
+                            .read()
                             .ports
                             .iter()
                             .map(|port| {
                                 let value = self.lookup(port.as_raw());
 
                                 (
-                                    port.borrow().name,
-                                    if port.borrow().attributes.has(
+                                    port.read().name,
+                                    if port.read().attributes.has(
                                         ir::Attribute::Unknown(
                                             "interp_signed".into(),
                                         ),

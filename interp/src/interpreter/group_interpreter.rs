@@ -1,13 +1,17 @@
 use super::utils::{self, ConstCell, ConstPort};
-use crate::interpreter::utils::get_dest_cells;
-use crate::utils::{AsRaw, PortAssignment, RcOrConst};
-use crate::values::Value;
 use crate::{environment::InterpreterState, utils::ArcTex};
 use crate::{
     errors::{InterpreterError, InterpreterResult},
     utils::arctex,
 };
-use calyx_ir::{self as ir, Assignment, Cell, RRC};
+use crate::{interpreter::utils::get_dest_cells, interpreter_ir::Assignment};
+use crate::{
+    interpreter_ir::{Cell, *},
+    utils::{AsRaw, PortAssignment, RcOrConst},
+};
+use crate::{utils::ArcTexOrConst, values::Value};
+use calyx_ir::{self as ir, RRC};
+use ir::Nothing;
 use parking_lot::RwLockReadGuard;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
@@ -19,32 +23,32 @@ use crate::interpreter_ir as iir;
 use rayon::prelude::*;
 
 pub enum AssignmentHolder {
-    CombGroup(ArcTex<ir::CombGroup>),
-    Group(ArcTex<ir::Group>),
-    Vec(ArcTex<Vec<Assignment<ir::Nothing>>>),
+    CombGroup(ArcTex<CombGroup>),
+    Group(ArcTex<Group>),
+    Vec(Arc<Vec<Assignment<ir::Nothing>>>),
 }
 
 impl Default for AssignmentHolder {
     fn default() -> Self {
-        Self::Vec(arctex(Vec::new()))
+        Self::Vec(Arc::new(Vec::new()))
     }
 }
 
-impl From<ArcTex<ir::CombGroup>> for AssignmentHolder {
-    fn from(input: ArcTex<ir::CombGroup>) -> Self {
+impl From<ArcTex<CombGroup>> for AssignmentHolder {
+    fn from(input: ArcTex<CombGroup>) -> Self {
         Self::CombGroup(input)
     }
 }
 
-impl From<ArcTex<ir::Group>> for AssignmentHolder {
-    fn from(gr: ArcTex<ir::Group>) -> Self {
+impl From<ArcTex<Group>> for AssignmentHolder {
+    fn from(gr: ArcTex<Group>) -> Self {
         Self::Group(gr)
     }
 }
 
 impl From<Vec<Assignment<ir::Nothing>>> for AssignmentHolder {
     fn from(v: Vec<Assignment<ir::Nothing>>) -> Self {
-        Self::Vec(arctex(v))
+        Self::Vec(Arc::new(v))
     }
 }
 
@@ -54,9 +58,7 @@ impl From<EnableHolder> for AssignmentHolder {
             EnableHolder::Group(grp) => AssignmentHolder::Group(grp),
             EnableHolder::CombGroup(cgrp) => AssignmentHolder::CombGroup(cgrp),
             EnableHolder::Vec(v) => AssignmentHolder::Vec(v),
-            EnableHolder::Enable(e) => {
-                AssignmentHolder::Group(arctex(e.read().group.borrow().clone()))
-            }
+            EnableHolder::Enable(e) => AssignmentHolder::Group(e.group.clone()),
         }
     }
 }
@@ -66,7 +68,7 @@ impl AssignmentHolder {
         match self {
             AssignmentHolder::CombGroup(cg) => IterRef::CombGroup(cg.read()),
             AssignmentHolder::Group(grp) => IterRef::Group(grp.read()),
-            AssignmentHolder::Vec(v) => IterRef::Vec(v.read()),
+            AssignmentHolder::Vec(v) => IterRef::Vec(v),
         }
     }
     pub fn get_name(&self) -> Option<ir::Id> {
@@ -79,15 +81,13 @@ impl AssignmentHolder {
 }
 
 pub enum IterRef<'a> {
-    CombGroup(RwLockReadGuard<'a, ir::CombGroup>),
-    Group(RwLockReadGuard<'a, ir::Group>),
-    Vec(RwLockReadGuard<'a, Vec<Assignment<ir::Nothing>>>),
+    CombGroup(RwLockReadGuard<'a, CombGroup>),
+    Group(RwLockReadGuard<'a, Group>),
+    Vec(&'a Arc<Vec<Assignment<Nothing>>>),
 }
 
 impl<'a> IterRef<'a> {
-    pub fn iter(
-        &self,
-    ) -> Box<dyn Iterator<Item = &ir::Assignment<ir::Nothing>> + '_> {
+    pub fn iter(&self) -> Box<dyn Iterator<Item = &Assignment<Nothing>> + '_> {
         match self {
             IterRef::CombGroup(cg) => Box::new(cg.assignments.iter()),
             IterRef::Group(g) => Box::new(g.assignments.iter()),
@@ -107,11 +107,11 @@ pub struct AssignmentInterpreter {
     state: InterpreterState,
     done_port: Option<ConstPort>,
     assigns: AssignmentHolder,
-    cont_assigns: iir::ContinuousAssignments,
-    cells: Vec<RRC<Cell>>,
+    cont_assigns: ContinuousAssignments,
+    cells: Vec<ArcTex<Cell>>,
     val_changed: Option<bool>,
-    possible_ports: HashSet<*const ir::Port>,
-    port_lookup_map: HashMap<*const ir::Port, RRC<ir::Port>>,
+    possible_ports: HashSet<*const Port>,
+    port_lookup_map: HashMap<*const Port, ArcTex<Port>>,
 }
 
 impl AssignmentInterpreter {
@@ -119,9 +119,9 @@ impl AssignmentInterpreter {
     /// assignments from an outside context
     pub fn new<A: Into<AssignmentHolder>>(
         state: InterpreterState,
-        done_signal: Option<RRC<ir::Port>>,
+        done_signal: Option<ArcTex<Port>>,
         assigns: A,
-        cont_assigns: Arc<Vec<ir::Assignment<ir::Nothing>>>,
+        cont_assigns: Arc<Vec<Assignment<Nothing>>>,
     ) -> Self {
         let done_port = done_signal.as_ref().map(|x| x.as_raw());
         let assigns: AssignmentHolder = assigns.into();
@@ -130,7 +130,7 @@ impl AssignmentInterpreter {
             done_signal,
         );
         let mut port_lookup_map = HashMap::new();
-        let possible_ports: HashSet<*const ir::Port> = assigns
+        let possible_ports: HashSet<*const Port> = assigns
             .get_ref()
             .iter()
             .chain(cont_assigns.iter())
@@ -166,27 +166,27 @@ impl AssignmentInterpreter {
             self.step_convergence()?;
         }
 
-        let mut update_list: Vec<(RRC<ir::Port>, Value)> = vec![];
+        let mut update_list: Vec<(ArcTex<Port>, Value)> = vec![];
 
         for cell in self.cells.iter() {
             if let Some(x) = self
                 .state
                 .cell_map
                 .write()
-                .get_mut(&(&cell.borrow() as &Cell as ConstCell))
+                .get_mut(&(&cell.read() as &Cell as ConstCell))
             {
                 let new_vals = x.do_tick()?;
                 for (port, val) in new_vals {
                     let port_ref =
-                        cell.borrow().find(&port).unwrap_or_else(|| {
+                        cell.read().find(&port).unwrap_or_else(|| {
                             panic!(
                                 "Could not find port: {}.{}. This should never happen, please make an issue.",
-                                cell.borrow().name(),
+                                cell.read().name(),
                                 port
                             )
                         });
 
-                    update_list.push((Rc::clone(&port_ref), val));
+                    update_list.push((Arc::clone(&port_ref), val));
                 }
             }
         }
@@ -206,8 +206,7 @@ impl AssignmentInterpreter {
         // only used when compiled with change-based-sim feature
         let mut first_iteration = true;
 
-        let mut updates_list: Vec<(Rc<std::cell::RefCell<ir::Port>>, Value)> =
-            vec![];
+        let mut updates_list: Vec<(ArcTex<Port>, Value)> = vec![];
 
         // this unwrap is safe
         while self.val_changed.unwrap() {
@@ -215,23 +214,22 @@ impl AssignmentInterpreter {
             self.val_changed = Some(false);
 
             // for change based simulation
-            let mut cells_to_run_rrc: Vec<RRC<Cell>> = Vec::new();
+            let mut cells_to_run_rrc: Vec<ArcTex<Cell>> = Vec::new();
             let mut cells_to_run_set: HashSet<*const Cell> = HashSet::new();
 
             let assign_ref = self.assigns.get_ref();
 
-            let assigns: Box<
-                dyn Iterator<Item = &ir::Assignment<ir::Nothing>>,
-            > = match converge_type {
-                ConvergeType::Continuous => Box::new(self.cont_assigns.iter())
-                    as Box<dyn Iterator<Item = &ir::Assignment<ir::Nothing>>>,
-                ConvergeType::Both => {
-                    Box::new(assign_ref.iter().chain(self.cont_assigns.iter()))
-                        as Box<
-                            dyn Iterator<Item = &ir::Assignment<ir::Nothing>>,
-                        >
-                }
-            };
+            let assigns: Box<dyn Iterator<Item = &Assignment<Nothing>>> =
+                match converge_type {
+                    ConvergeType::Continuous => {
+                        Box::new(self.cont_assigns.iter())
+                            as Box<dyn Iterator<Item = &Assignment<Nothing>>>
+                    }
+                    ConvergeType::Both => Box::new(
+                        assign_ref.iter().chain(self.cont_assigns.iter()),
+                    )
+                        as Box<dyn Iterator<Item = &Assignment<Nothing>>>,
+                };
 
             // // compute all updates from the assignments
             // (*self.cont_assigns)
@@ -311,8 +309,8 @@ impl AssignmentInterpreter {
                 let new_val = Value::from(0, old_val_width);
 
                 if old_val.as_unsigned() != 0_u32.into() {
-                    let port_ref = &self.port_lookup_map[&port].borrow();
-                    if let ir::PortParent::Cell(cell) = &port_ref.parent {
+                    let port_ref = &self.port_lookup_map[&port].read();
+                    if let PortParent::Cell(cell) = &port_ref.parent {
                         let cell_rrc = cell.upgrade();
                         if cells_to_run_set.insert(cell_rrc.as_raw()) {
                             cells_to_run_rrc.push(cell_rrc)
@@ -371,7 +369,7 @@ impl AssignmentInterpreter {
                     // zero
                     self.state.insert(
                         &assign.dst,
-                        Value::zeroes(assign.dst.borrow().width),
+                        Value::zeroes(assign.dst.read().width),
                     );
                 }
             }
@@ -452,14 +450,14 @@ impl AssignmentInterpreter {
         finish_interpretation(env, done_signal, assign_ref.iter())
     }
 
-    pub fn get<P: AsRaw<ir::Port>>(&self, port: P) -> &Value {
+    pub fn get<P: AsRaw<iir::Port>>(&self, port: P) -> &Value {
         self.state.get_from_port(port)
     }
 
     // This is not currenty relevant for anything, but may be needed later
     // pending adjustments to the primitive contract as we will need the ability
     // to pass new inputs to components
-    pub(super) fn _insert<P: AsRaw<ir::Port>>(&mut self, port: P, val: Value) {
+    pub(super) fn _insert<P: AsRaw<iir::Port>>(&mut self, port: P, val: Value) {
         self.state.insert(port, val)
     }
 
@@ -481,7 +479,7 @@ impl AssignmentInterpreter {
 /// thus to the assignments it is referencing meanwhile the lifetime on the
 /// given cell RRCs is unrelated and largely irrelevant as the prim_map is keyed
 /// off of port raw pointers whose lifetime is uncoupled from the cells.
-pub(crate) fn eval_prims<'a, 'b, I: Iterator<Item = &'b RRC<ir::Cell>>>(
+pub(crate) fn eval_prims<'a, 'b, I: Iterator<Item = &'b ArcTex<Cell>>>(
     env: &mut InterpreterState,
     exec_list: I,
     reset_flag: bool, // reset vals or execute normally
@@ -492,10 +490,10 @@ pub(crate) fn eval_prims<'a, 'b, I: Iterator<Item = &'b RRC<ir::Cell>>>(
     let ref_clone = env.cell_map.clone(); // RC clone
     let mut prim_map = ref_clone.write();
 
-    let mut update_list: Vec<(RRC<ir::Port>, Value)> = vec![];
+    let mut update_list: Vec<(ArcTex<Port>, Value)> = vec![];
 
     for cell in exec_list {
-        let inputs = get_inputs(env, &cell.borrow());
+        let inputs = get_inputs(env, &cell.read());
 
         let executable = prim_map.get_mut(&cell.as_raw());
 
@@ -507,14 +505,14 @@ pub(crate) fn eval_prims<'a, 'b, I: Iterator<Item = &'b RRC<ir::Cell>>>(
             };
 
             for (port, val) in new_vals? {
-                let port_ref = cell.borrow().find(port).unwrap();
+                let port_ref = cell.read().find(port).unwrap();
 
-                let current_val = env.get_from_port(&port_ref.borrow());
+                let current_val = env.get_from_port(&port_ref);
 
                 if *current_val != val {
                     val_changed = true;
                     // defer value update until after all executions
-                    update_list.push((Rc::clone(&port_ref), val));
+                    update_list.push((Arc::clone(&port_ref), val));
                 }
             }
         }
@@ -529,12 +527,12 @@ pub(crate) fn eval_prims<'a, 'b, I: Iterator<Item = &'b RRC<ir::Cell>>>(
 
 fn get_inputs<'a>(
     env: &'a InterpreterState,
-    cell: &ir::Cell,
+    cell: &Cell,
 ) -> Vec<(ir::Id, &'a Value)> {
     cell.ports
         .iter()
         .filter_map(|p| {
-            let p_ref: &ir::Port = &p.borrow();
+            let p_ref: &Port = &p.read();
             match &p_ref.direction {
                 ir::Direction::Input => {
                     Some((p_ref.name, env.get_from_port(p_ref)))
@@ -550,28 +548,28 @@ fn get_inputs<'a>(
 /// accordingly using zero as a placeholder for values that are undefined
 pub(crate) fn finish_interpretation<
     'a,
-    I: Iterator<Item = &'a ir::Assignment<ir::Nothing>>,
-    P: Into<RcOrConst<ir::Port>>,
+    I: Iterator<Item = &'a Assignment<ir::Nothing>>,
+    P: Into<ArcTexOrConst<Port>>,
 >(
     mut env: InterpreterState,
     done_signal: Option<P>,
     assigns: I,
 ) -> InterpreterResult<InterpreterState> {
-    let done_signal: Option<RcOrConst<ir::Port>> =
+    let done_signal: Option<ArcTexOrConst<Port>> =
         done_signal.map(|x| x.into());
     // replace port values for all the assignments
     let assigns = assigns.collect::<Vec<_>>();
 
-    for &ir::Assignment { dst, .. } in &assigns {
+    for &Assignment { dst, .. } in &assigns {
         env.insert(
-            &dst.borrow() as &ir::Port as ConstPort,
-            Value::zeroes(dst.borrow().width as usize),
+            &dst.read() as &Port as ConstPort,
+            Value::zeroes(dst.read().width as usize),
         );
     }
 
     let cells = get_dest_cells(
         assigns.iter().copied(),
-        done_signal.as_ref().and_then(|x| x.get_rrc()),
+        done_signal.as_ref().and_then(|x| x.as_arc().cloned()),
     );
 
     if let Some(done_signal) = done_signal {

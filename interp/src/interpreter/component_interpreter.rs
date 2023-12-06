@@ -11,16 +11,16 @@ use crate::{
     debugger::{name_tree::ActiveTreeNode, PrintCode},
     environment::InterpreterState,
     errors::InterpreterResult,
-    interpreter_ir as iir,
+    interpreter_ir::{self as iir, Component, Control, Port, PortParent},
     primitives::{Named, Primitive},
     structures::names::{
         ComponentQualifiedInstanceName, GroupQIN, GroupQualifiedInstanceName,
     },
     structures::state_views::{MutStateView, StateView},
-    utils::AsRaw,
+    utils::{ArcTex, AsRaw},
     values::Value,
 };
-use calyx_ir::{self as ir, Port, RRC};
+use calyx_ir::{self as ir, RRC};
 use std::rc::Rc;
 
 enum StructuralOrControl {
@@ -58,13 +58,13 @@ impl From<ControlInterpreter> for StructuralOrControl {
 
 pub struct ComponentInterpreter {
     interp: StructuralOrControl,
-    input_ports: Vec<RRC<Port>>,
-    output_ports: Vec<RRC<Port>>,
-    comp_ref: Arc<iir::Component>,
-    control_ref: iir::Control,
+    input_ports: Vec<ArcTex<Port>>,
+    output_ports: Vec<ArcTex<Port>>,
+    comp_ref: Arc<Component>,
+    control_ref: Control,
     done_port: Arc<Port>,
     go_port: Arc<Port>,
-    input_hash_set: Arc<HashSet<*const ir::Port>>,
+    input_hash_set: Arc<HashSet<*const Port>>,
     qual_name: ComponentQualifiedInstanceName,
     /// used to satisfy the Named requirement for primitives, primarially for error messages
     full_name_clone: ir::Id,
@@ -87,7 +87,7 @@ impl ComponentInterpreter {
         let (mut inputs, mut outputs) = (Vec::new(), Vec::new());
 
         for port in comp.signature.read().ports.iter() {
-            let pt_ref = port.borrow();
+            let pt_ref = port.read();
             match &pt_ref.direction {
                 ir::Direction::Input => outputs.push(port.clone()),
                 ir::Direction::Output => inputs.push(port.clone()),
@@ -102,34 +102,34 @@ impl ComponentInterpreter {
         let go_port = Arc::new(
             inputs
                 .iter()
-                .find(|x| x.borrow().attributes.has(ir::NumAttr::Go))
+                .find(|x| x.read().attributes.has(ir::NumAttr::Go))
                 .unwrap()
-                .borrow()
+                .read()
                 .clone(),
         );
 
         let done_port = Arc::new(
             outputs
                 .iter()
-                .find(|x| x.borrow().attributes.has(ir::NumAttr::Done))
+                .find(|x| x.read().attributes.has(ir::NumAttr::Done))
                 .unwrap()
-                .borrow()
+                .read()
                 .clone(),
         );
 
         let mut override_set =
             inputs.iter().map(|x| x.as_raw()).collect::<HashSet<_>>();
-        override_set.insert(done_port.as_raw());
+        override_set.insert(Arc::as_ptr(&done_port));
 
         // Need to include continuous assignments in the override
         for assignment in comp.continuous_assignments.iter() {
             override_set.insert(assignment.dst.as_raw());
-            let dst_ref = assignment.dst.borrow();
-            if let ir::PortParent::Cell(c) = &dst_ref.parent {
+            let dst_ref = assignment.dst.read();
+            if let PortParent::Cell(c) = &dst_ref.parent {
                 let cell = c.upgrade();
-                let cell_ref = cell.borrow();
+                let cell_ref = cell.read();
                 for port in cell_ref.ports() {
-                    let port_ref = port.borrow();
+                    let port_ref = port.read();
                     if let calyx_ir::Direction::Output = port_ref.direction {
                         override_set.insert(port.as_raw());
                     }
@@ -174,7 +174,7 @@ impl ComponentInterpreter {
         self.output_ports
             .iter()
             .map(|x| {
-                let port_ref = x.borrow();
+                let port_ref = x.read();
                 (port_ref.name, env.lookup(x.as_raw()).clone())
             })
             .collect()
@@ -182,35 +182,37 @@ impl ComponentInterpreter {
 
     #[inline]
     fn go_is_high(&self) -> bool {
-        self.get_env().lookup(self.go_port.as_raw()).as_bool()
+        self.get_env().lookup(Arc::as_ptr(&self.go_port)).as_bool()
     }
 
     #[inline]
     fn done_is_high(&self) -> bool {
-        self.get_env().lookup(self.done_port.as_raw()).as_bool()
+        self.get_env()
+            .lookup(Arc::as_ptr(&self.done_port))
+            .as_bool()
     }
 
     #[inline]
     pub fn set_go_high(&mut self) {
-        let raw = self.go_port.as_raw();
+        let raw = Arc::as_ptr(&self.go_port);
         self.get_env_mut().insert(raw, Value::bit_high())
     }
 
     #[inline]
     pub fn set_go_low(&mut self) {
-        let raw = self.go_port.as_raw();
+        let raw = Arc::as_ptr(&self.go_port);
         self.get_env_mut().insert(raw, Value::bit_low())
     }
 
     #[inline]
     fn set_done_high(&mut self) {
-        let raw = self.done_port.as_raw();
+        let raw = Arc::as_ptr(&self.done_port);
         self.get_env_mut().insert(raw, Value::bit_high())
     }
 
     #[inline]
     fn set_done_low(&mut self) {
-        let raw = self.done_port.as_raw();
+        let raw = Arc::as_ptr(&self.done_port);
         self.get_env_mut().insert(raw, Value::bit_low())
     }
 
@@ -378,9 +380,9 @@ impl Primitive for ComponentInterpreter {
             let port = self
                 .input_ports
                 .iter()
-                .find(|x| x.borrow().name == name)
+                .find(|x| x.read().name == name)
                 .expect("Component given non-existant input");
-            assert_eq!(port.borrow().width, value.width())
+            assert_eq!(port.read().width, value.width())
         }
     }
 
@@ -388,14 +390,14 @@ impl Primitive for ComponentInterpreter {
         &mut self,
         inputs: &[(ir::Id, &crate::values::Value)],
     ) -> InterpreterResult<Vec<(ir::Id, crate::values::Value)>> {
-        let mut assigned = HashSet::new();
+        let mut assigned: HashSet<*const Port> = HashSet::new();
         let mut input_vec = inputs
             .iter()
             .map(|(name, val)| {
                 let port = self
                     .input_ports
                     .iter()
-                    .find(|x| x.borrow().name == name)
+                    .find(|x| x.read().name == name)
                     .unwrap();
                 assigned.insert(port.as_raw());
                 (port.as_raw(), (*val).clone())
@@ -404,7 +406,7 @@ impl Primitive for ComponentInterpreter {
 
         for port in &self.input_ports {
             if !assigned.contains(&port.as_raw()) {
-                let pt_ref = port.borrow();
+                let pt_ref = port.read();
                 input_vec.push((
                     port.as_raw(),
                     Value::zeroes(pt_ref.width as usize),
