@@ -91,6 +91,26 @@ pub struct Group {
     pub attributes: Attributes,
 }
 
+impl Group {
+    pub(crate) fn from_ir(
+        original: &RRC<orig_ir::Group>,
+        translator: &mut TranslationMap,
+    ) -> Self {
+        let orig = original.borrow();
+
+        Self {
+            name: orig.name(),
+            assignments: orig
+                .assignments
+                .iter()
+                .map(|x| Assignment::from_ir(x, translator))
+                .collect(),
+            holes: orig.holes.iter().map(|x| translator.get_port(x)).collect(),
+            attributes: orig.attributes.clone(),
+        }
+    }
+}
+
 /// Represents a guarded assignment in the program
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
@@ -108,6 +128,20 @@ pub struct Assignment<T> {
     pub attributes: Attributes,
 }
 
+impl<T> Assignment<T> {
+    pub(crate) fn from_ir(
+        original: &orig_ir::Assignment<T>,
+        translator: &mut TranslationMap,
+    ) -> Self {
+        Self {
+            dst: translator.get_port(&original.dst),
+            src: translator.get_port(&original.src),
+            guard: Box::new(Guard::from_ir(&original.guard, translator)),
+            attributes: original.attributes.clone(),
+        }
+    }
+}
+
 /// Represents an instantiated cell.
 #[derive(Debug)]
 #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
@@ -122,6 +156,23 @@ pub struct Cell {
     pub attributes: Attributes,
     /// Whether the cell is external
     reference: bool,
+}
+
+impl Cell {
+    pub(crate) fn from_ir(
+        original: &RRC<orig_ir::Cell>,
+        translator: &mut TranslationMap,
+    ) -> Self {
+        let orig = original.borrow();
+
+        Self {
+            name: orig.name(),
+            ports: orig.ports.iter().map(|x| translator.get_port(x)).collect(),
+            prototype: orig.prototype.clone(),
+            attributes: orig.attributes.clone(),
+            reference: orig.is_reference(),
+        }
+    }
 }
 
 /// An assignment guard which has pointers to the various ports from which it reads.
@@ -143,6 +194,15 @@ pub enum Guard<T> {
     Port(ArcTex<Port>),
     /// Other types of information.
     Info(T),
+}
+
+impl<T> Guard<T> {
+    pub(crate) fn from_ir(
+        original: &orig_ir::Guard<T>,
+        translator: &mut TranslationMap,
+    ) -> Self {
+        todo!()
+    }
 }
 
 #[derive(Debug, Clone)]
