@@ -11,13 +11,6 @@ pub(crate) struct TranslationMap {
 }
 
 impl TranslationMap {
-    // pub fn get_cell(&mut self, target: &RRC<Cell>) -> ArcTex<Cell> {
-    //     let key = target.as_raw();
-    //     self.cell_map
-    //         .entry(key)
-    //         .or_insert_with(|| arctex((*target.borrow()).clone()))
-    // }
-
     pub fn get_port(&mut self, target: &RRC<orig_ir::Port>) -> ArcTex<Port> {
         let key = target.as_raw();
         if let Some(x) = self.port_map.get(&key) {
@@ -30,17 +23,38 @@ impl TranslationMap {
     }
 
     pub fn get_cell(&mut self, target: &RRC<orig_ir::Cell>) -> ArcTex<Cell> {
-        todo!()
+        let key = target.as_raw();
+        if let Some(x) = self.cell_map.get(&key) {
+            x.clone()
+        } else {
+            let v = arctex(Cell::from_ir(target, self));
+            self.cell_map.insert(key, v.clone());
+            v
+        }
     }
 
     pub fn get_group(&mut self, target: &RRC<orig_ir::Group>) -> ArcTex<Group> {
-        todo!()
+        let key = target.as_raw();
+        if let Some(x) = self.group_map.get(&key) {
+            x.clone()
+        } else {
+            let v = arctex(Group::from_ir(target, self));
+            self.group_map.insert(key, v.clone());
+            v
+        }
     }
 
     pub fn get_comb_group(
         &mut self,
         target: &RRC<orig_ir::CombGroup>,
     ) -> ArcTex<CombGroup> {
-        todo!()
+        let key = target.as_raw();
+        if let Some(x) = self.comb_group_map.get(&key) {
+            x.clone()
+        } else {
+            let v = arctex(CombGroup::from_ir(target, self));
+            self.comb_group_map.insert(key, v.clone());
+            v
+        }
     }
 }

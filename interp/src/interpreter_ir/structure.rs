@@ -237,3 +237,21 @@ pub struct CombGroup {
     /// Attributes for this group.
     pub attributes: Attributes,
 }
+
+impl CombGroup {
+    pub(crate) fn from_ir(
+        original: &RRC<orig_ir::CombGroup>,
+        translator: &mut TranslationMap,
+    ) -> Self {
+        let orig = original.borrow();
+        Self {
+            name: orig.name(),
+            assignments: orig
+                .assignments
+                .iter()
+                .map(|x| Assignment::from_ir(x, translator))
+                .collect(),
+            attributes: orig.attributes.clone(),
+        }
+    }
+}
