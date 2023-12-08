@@ -31,8 +31,11 @@ impl TranslationMap {
         if let Some(x) = self.cell_map.get(&key) {
             x.clone()
         } else {
-            let v = arctex(Cell::from_ir(target, self));
+            let v = arctex(Cell::from_ir_partial(target, self));
             self.cell_map.insert(key, v.clone());
+            v.write().ports.extend(
+                target.borrow().ports().iter().map(|x| self.get_port(x)),
+            );
             v
         }
     }
@@ -42,8 +45,18 @@ impl TranslationMap {
         if let Some(x) = self.group_map.get(&key) {
             x.clone()
         } else {
-            let v = arctex(Group::from_ir(target, self));
+            let v = arctex(Group::from_ir_partial(target, self));
             self.group_map.insert(key, v.clone());
+            v.write()
+                .holes
+                .extend(target.borrow().holes.iter().map(|x| self.get_port(x)));
+            v.write().assignments.extend(
+                target
+                    .borrow()
+                    .assignments
+                    .iter()
+                    .map(|x| Assignment::from_ir(x, self)),
+            );
             v
         }
     }

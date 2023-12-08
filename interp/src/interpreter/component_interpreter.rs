@@ -62,8 +62,8 @@ pub struct ComponentInterpreter {
     output_ports: Vec<ArcTex<Port>>,
     comp_ref: Arc<Component>,
     control_ref: Control,
-    done_port: Arc<Port>,
-    go_port: Arc<Port>,
+    done_port: ArcTex<Port>,
+    go_port: ArcTex<Port>,
     input_hash_set: Arc<HashSet<*const Port>>,
     qual_name: ComponentQualifiedInstanceName,
     /// used to satisfy the Named requirement for primitives, primarially for error messages
@@ -99,27 +99,21 @@ impl ComponentInterpreter {
         }
         let control = comp.control.clone();
 
-        let go_port = Arc::new(
-            inputs
-                .iter()
-                .find(|x| x.read().attributes.has(ir::NumAttr::Go))
-                .unwrap()
-                .read()
-                .clone(),
-        );
+        let go_port = inputs
+            .iter()
+            .find(|x| x.read().attributes.has(ir::NumAttr::Go))
+            .unwrap()
+            .clone();
 
-        let done_port = Arc::new(
-            outputs
-                .iter()
-                .find(|x| x.read().attributes.has(ir::NumAttr::Done))
-                .unwrap()
-                .read()
-                .clone(),
-        );
+        let done_port = outputs
+            .iter()
+            .find(|x| x.read().attributes.has(ir::NumAttr::Done))
+            .unwrap()
+            .clone();
 
         let mut override_set =
             inputs.iter().map(|x| x.as_raw()).collect::<HashSet<_>>();
-        override_set.insert(Arc::as_ptr(&done_port));
+        override_set.insert(done_port.as_raw());
 
         // Need to include continuous assignments in the override
         for assignment in comp.continuous_assignments.iter() {
@@ -182,37 +176,35 @@ impl ComponentInterpreter {
 
     #[inline]
     fn go_is_high(&self) -> bool {
-        self.get_env().lookup(Arc::as_ptr(&self.go_port)).as_bool()
+        self.get_env().lookup(&self.go_port).as_bool()
     }
 
     #[inline]
     fn done_is_high(&self) -> bool {
-        self.get_env()
-            .lookup(Arc::as_ptr(&self.done_port))
-            .as_bool()
+        self.get_env().lookup(&self.done_port).as_bool()
     }
 
     #[inline]
     pub fn set_go_high(&mut self) {
-        let raw = Arc::as_ptr(&self.go_port);
+        let raw = self.go_port.as_raw();
         self.get_env_mut().insert(raw, Value::bit_high())
     }
 
     #[inline]
     pub fn set_go_low(&mut self) {
-        let raw = Arc::as_ptr(&self.go_port);
+        let raw = self.go_port.as_raw();
         self.get_env_mut().insert(raw, Value::bit_low())
     }
 
     #[inline]
     fn set_done_high(&mut self) {
-        let raw = Arc::as_ptr(&self.done_port);
+        let raw = self.done_port.as_raw();
         self.get_env_mut().insert(raw, Value::bit_high())
     }
 
     #[inline]
     fn set_done_low(&mut self) {
-        let raw = Arc::as_ptr(&self.done_port);
+        let raw = self.done_port.as_raw();
         self.get_env_mut().insert(raw, Value::bit_low())
     }
 

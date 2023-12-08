@@ -141,7 +141,7 @@ impl AssignmentInterpreter {
             .collect();
 
         Self {
-            state,
+            state: state,
             done_port,
             assigns,
             cont_assigns,
@@ -191,8 +191,10 @@ impl AssignmentInterpreter {
             }
         }
 
+        let mut state_map = &mut self.state;
+
         for (port, val) in update_list {
-            self.state.insert(port, val);
+            state_map.insert(port, val);
         }
         self.val_changed = None;
 
@@ -206,93 +208,68 @@ impl AssignmentInterpreter {
         // only used when compiled with change-based-sim feature
         let mut first_iteration = true;
 
-        let mut updates_list: Vec<(ArcTex<Port>, Value)> = vec![];
+        let assign_ref = self.assigns.get_ref();
 
+        let mut assigns_actual = vec![];
+
+        match converge_type {
+            ConvergeType::Continuous => {
+                assigns_actual.extend(self.cont_assigns.iter())
+            }
+            ConvergeType::Both => assigns_actual
+                .extend(assign_ref.iter().chain(self.cont_assigns.iter())),
+        };
+
+        // if self.done_port.is_some() {
+        //     assert!(assigns_actual
+        //         .iter()
+        //         .map(|x| x.dst.as_raw())
+        //         .any(|x| x == self.done_port.unwrap()))
+        // }
         // this unwrap is safe
         while self.val_changed.unwrap() {
-            let mut assigned_ports: HashSet<PortAssignment> = HashSet::new();
             self.val_changed = Some(false);
 
             // for change based simulation
             let mut cells_to_run_rrc: Vec<ArcTex<Cell>> = Vec::new();
             let mut cells_to_run_set: HashSet<*const Cell> = HashSet::new();
 
-            let assign_ref = self.assigns.get_ref();
-
-            let assigns: Box<dyn Iterator<Item = &Assignment<Nothing>>> =
-                match converge_type {
-                    ConvergeType::Continuous => {
-                        Box::new(self.cont_assigns.iter())
-                            as Box<dyn Iterator<Item = &Assignment<Nothing>>>
-                    }
-                    ConvergeType::Both => Box::new(
-                        assign_ref.iter().chain(self.cont_assigns.iter()),
+            // compute all updates from the assignments
+            let mut updates_list: Vec<(ArcTex<Port>, Value)> =
+                assigns_actual
+                    .par_iter()
+                    .filter_map(
+                        |assignment: &&Assignment<Nothing>| -> Option<
+                            (ArcTex<Port>, Value)
+                        > {
+                            if self
+                                .state
+                                .eval_guard(&assignment.guard)
+                                .unwrap()
+                            {
+                                Some((
+                                    assignment.dst.clone(),
+                                    self.state
+                                        .get_from_port(&assignment.src)
+                                        .clone(),
+                                ))
+                            } else {
+                                None
+                            }
+                        },
                     )
-                        as Box<dyn Iterator<Item = &Assignment<Nothing>>>,
-                };
+                    .collect();
 
-            // // compute all updates from the assignments
-            // (*self.cont_assigns)
-            //     .clone()
-            //     .par_iter()
-            //     .for_each(|assignment| {
-            //         if self.state.eval_guard(&assignment.guard)? {
-            //             let pa = PortAssignment::new(assignment);
-            //             //first check nothing has been assigned to this destination yet
-            //             if let Some(prior_assign) = assigned_ports.get(&pa) {
-            //                 let s_orig = prior_assign.get_assignment();
-            //                 let s_conf = pa.get_assignment();
-
-            //                 let dst = assignment.dst.borrow();
-
-            //                 return Err(
-            //                     InterpreterError::conflicting_assignments(
-            //                         dst.name,
-            //                         dst.get_parent_name(),
-            //                         s_orig,
-            //                         s_conf,
-            //                     )
-            //                     .into(),
-            //                 );
-            //             }
-            //             //now add to the HS, because we are assigning
-            //             //regardless of whether value has changed this is still a
-            //             //value driving the port
-            //             assigned_ports.insert(pa);
-            //             //ok now proceed
-            //             //the below (get) attempts to get from working_env HM first, then
-            //             //backing_env Smoosher. What does it mean for the value to be in HM?
-            //             //That it's a locked value?
-            //             let old_val =
-            //                 self.state.get_from_port(&assignment.dst.borrow());
-            //             let new_val_ref =
-            //                 self.state.get_from_port(&assignment.src.borrow());
-            //             // no need to make updates if the value has not changed
-
-            //             if old_val != new_val_ref {
-            //                 let port = assignment.dst.clone(); // Rc clone
-            //                 let new_val = new_val_ref.clone();
-
-            //                 let pref = port.borrow();
-
-            //                 if let ir::PortParent::Cell(cell) = &pref.parent {
-            //                     let cell_rrc = cell.upgrade();
-            //                     if cells_to_run_set.insert(cell_rrc.as_raw()) {
-            //                         cells_to_run_rrc.push(cell_rrc)
-            //                     }
-            //                 }
-
-            //                 drop(pref);
-
-            //                 updates_list.push((port, new_val)); //no point in rewriting same value to this list
-            //                 self.val_changed = Some(true);
-            //             }
-            //         }
-            //     });
-
-            let assigned_const_ports: HashSet<_> = assigned_ports
+            let assigned_const_ports: HashSet<_> = updates_list
                 .iter()
-                .map(PortAssignment::get_port)
+                .map(|(x, _)| x.as_raw())
+                // .filter_map(|(port, _val)| {
+                //     if self.state.get_from_port(port) != _val {
+                //         Some(port.as_raw())
+                //     } else {
+                //         None
+                //     }
+                // })
                 .collect();
 
             //now assign rest to 0
@@ -326,18 +303,23 @@ impl AssignmentInterpreter {
 
             // perform all the updates
             for (port, value) in updates_list.drain(..) {
-                self.state.insert(port, value);
+                if self.state.get_from_port(&port) != &value {
+                    self.state.insert(port, value);
+                }
             }
 
-            let changed = eval_prims(
+            // dbg!(&cells_to_run_rrc);
+
+            let changed = (eval_prims(
                 &mut self.state,
                 if first_iteration {
                     self.cells.iter()
                 } else {
-                    cells_to_run_rrc.iter()
+                    // cells_to_run_rrc.iter()
+                    self.cells.iter()
                 },
                 false,
-            )?;
+            )?);
             if changed {
                 self.val_changed = Some(true);
             }
@@ -393,7 +375,7 @@ impl AssignmentInterpreter {
 
     /// Run the interpreter until it finishes executing
     pub fn run(&mut self) -> InterpreterResult<()> {
-        while !self.is_deconstructable() {
+        while !(self.is_deconstructable()) {
             self.step()?;
         }
         self.step_convergence()
@@ -484,6 +466,7 @@ pub(crate) fn eval_prims<'a, 'b, I: Iterator<Item = &'b ArcTex<Cell>>>(
     exec_list: I,
     reset_flag: bool, // reset vals or execute normally
 ) -> InterpreterResult<bool> {
+    // dbg!("running eval prims");
     let mut val_changed = false;
     // split mutability
     // TODO: change approach based on new env, once ready
@@ -493,16 +476,16 @@ pub(crate) fn eval_prims<'a, 'b, I: Iterator<Item = &'b ArcTex<Cell>>>(
     let mut update_list: Vec<(ArcTex<Port>, Value)> = vec![];
 
     for cell in exec_list {
-        let inputs = get_inputs(env, &cell.read());
+        let inputs = (get_inputs(env, &cell.read()));
 
         let executable = prim_map.get_mut(&cell.as_raw());
 
         if let Some(prim) = executable {
-            let new_vals = if reset_flag {
+            let new_vals = (if reset_flag {
                 prim.reset(&inputs)
             } else {
                 prim.execute(&inputs)
-            };
+            });
 
             for (port, val) in new_vals? {
                 let port_ref = cell.read().find(port).unwrap();

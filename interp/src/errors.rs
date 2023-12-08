@@ -161,14 +161,14 @@ impl InterpreterError {
     pub fn conflicting_assignments(
         port_id: Id,
         parent_id: Id,
-        a1: &Assignment<ir::Nothing>,
-        a2: &Assignment<ir::Nothing>,
+        a1: &interpreter_ir::Assignment<ir::Nothing>,
+        a2: &interpreter_ir::Assignment<ir::Nothing>,
     ) -> Self {
         Self::ConflictingAssignments {
             port_id,
             parent_id,
-            a1: assignment_to_string(a1),
-            a2: assignment_to_string(a2),
+            a1: todo!(),
+            a2: todo!(),
         }
     }
 }

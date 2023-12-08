@@ -24,12 +24,12 @@ use crate::{
 };
 use calyx_ir::{self as ir, RRC};
 use ir::{Nothing, PortComp};
-use std::iter::once;
 use std::rc::Rc;
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
 };
+use std::{fmt::Debug, iter::once};
 
 /// A raw pointer reference to a cell. Can only be used as a key, but cannot be
 /// used to access the cell itself.
@@ -74,6 +74,23 @@ pub struct InterpreterState {
     /// flag which tells the environment to allow certain par conflicts on
     /// merging
     allow_par_conflicts: bool,
+}
+
+// this is really bad
+unsafe impl Sync for InterpreterState {}
+unsafe impl Send for InterpreterState {}
+
+impl Debug for InterpreterState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("InterpreterState")
+            .field("clk", &self.clk)
+            .field("port_map", &self.port_map)
+            .field("context", &self.context)
+            .field("component", &self.component)
+            .field("sub_comp_set", &self.sub_comp_set)
+            .field("allow_par_conflicts", &self.allow_par_conflicts)
+            .finish()
+    }
 }
 
 /// Helper functions for the environment.

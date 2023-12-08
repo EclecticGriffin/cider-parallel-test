@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use calyx_frontend::{Attribute, Attributes, Direction};
 use calyx_ir::{self as orig_ir, CellType, Nothing, PortComp, RRC};
+
 use calyx_utils::{GetName, Id};
 use itertools::Itertools;
 use orig_ir::Canonical;
@@ -108,7 +109,7 @@ pub struct Group {
 }
 
 impl Group {
-    pub(crate) fn from_ir(
+    pub(crate) fn from_ir_partial(
         original: &RRC<orig_ir::Group>,
         translator: &mut TranslationMap,
     ) -> Self {
@@ -116,12 +117,8 @@ impl Group {
 
         Self {
             name: orig.name(),
-            assignments: orig
-                .assignments
-                .iter()
-                .map(|x| Assignment::from_ir(x, translator))
-                .collect(),
-            holes: orig.holes.iter().map(|x| translator.get_port(x)).collect(),
+            assignments: vec![],
+            holes: Default::default(),
             attributes: orig.attributes.clone(),
         }
     }
@@ -214,7 +211,7 @@ impl GetName for Cell {
 }
 
 impl Cell {
-    pub(crate) fn from_ir(
+    pub(crate) fn from_ir_partial(
         original: &RRC<orig_ir::Cell>,
         translator: &mut TranslationMap,
     ) -> Self {
@@ -222,12 +219,13 @@ impl Cell {
 
         Self {
             name: orig.name(),
-            ports: orig.ports.iter().map(|x| translator.get_port(x)).collect(),
+            ports: Default::default(),
             prototype: orig.prototype.clone(),
             attributes: orig.attributes.clone(),
             reference: orig.is_reference(),
         }
     }
+
     /// Returns a reference to all [super::Port] attached to this cells.
     pub fn ports(&self) -> &SmallVec<[ArcTex<Port>; 10]> {
         &self.ports
