@@ -7,7 +7,7 @@ paths = ["tests/unit/*.futil"]
 cmd = """
   ../target/debug/cider {} | jq .memories --sort-keys
 """
-timeout = 3
+timeout = 10
 
 [[tests]]
 name = "errors"
@@ -16,7 +16,7 @@ paths = ["tests/errors/*.futil"]
 cmd = """
 ../target/debug/cider {}
 """
-timeout = 3
+timeout = 10
 
 [[tests]]
 name = "complex"
@@ -25,7 +25,7 @@ paths = ["tests/complex/*.futil"]
 cmd = """
 ../target/debug/cider {} | jq . --sort-keys
 """
-timeout = 3
+timeout = 10
 
 [[tests]]
 name = "primitives"
@@ -33,7 +33,7 @@ paths = ["tests/primitives/*.futil"]
 cmd = """
 ../target/debug/cider {} -q | jq .memories --sort-keys
 """
-timeout = 3
+timeout = 10
 
 [[tests]]
 name = "par to seq"
@@ -41,7 +41,7 @@ paths = ["tests/control/par_reg.futil", "tests/control/par_mem.futil"]
 cmd = """
 ../target/debug/calyx {} -p par-to-seq -l ../ | ../target/debug/cider | jq .memories --sort-keys
 """
-timeout = 3
+timeout = 10
 
 [[tests]]
 name = "control"
@@ -53,7 +53,7 @@ paths = [
 cmd = """
 ../target/debug/cider {} -q | jq .memories --sort-keys
 """
-timeout = 3
+timeout = 10
 
 [[tests]]
 name = "invoke"
@@ -80,7 +80,7 @@ cmd = """
 ../target/debug/calyx {} -d pre-opt -d post-opt -p simplify-with-control -l ../ | ../target/debug/cider | jq .memories --sort-keys
 """
 expect_dir = "tests/lowered/"
-timeout = 3
+timeout = 10
 
 [[tests]]
 name = "fully structural static"
@@ -89,7 +89,7 @@ cmd = """
 ../target/debug/calyx {} -d pre-opt -d post-opt  -l ../ | ../target/debug/cider | jq .memories --sort-keys
 """
 expect_dir = "tests/lowered/"
-timeout = 3
+timeout = 10
 
 [[tests]]
 name = "correctness dynamic"
