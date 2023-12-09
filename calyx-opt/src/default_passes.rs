@@ -136,7 +136,7 @@ impl PassManager {
             [
                 WrapMain,
                 GoInsertion,
-                WireInliner,
+                HoleInliner,
                 ClkInsertion,
                 ResetInsertion,
                 MergeAssign,
