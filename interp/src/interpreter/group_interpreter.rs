@@ -304,7 +304,15 @@ impl AssignmentInterpreter {
             // perform all the updates
             for (port, value) in updates_list.drain(..) {
                 if self.state.get_from_port(&port) != &value {
-                    self.state.insert(port, value);
+                    self.state.insert(port.clone(), value);
+
+                    if let PortParent::Cell(c) = &port.read().parent {
+                        let c = c.upgrade();
+                        if !cells_to_run_set.contains(&c.as_raw()) {
+                            cells_to_run_set.insert(c.as_raw());
+                            cells_to_run_rrc.push(c);
+                        }
+                    }
                 }
             }
 
@@ -315,8 +323,7 @@ impl AssignmentInterpreter {
                 if first_iteration {
                     self.cells.iter()
                 } else {
-                    // cells_to_run_rrc.iter()
-                    self.cells.iter()
+                    cells_to_run_rrc.iter()
                 },
                 false,
             )?);
