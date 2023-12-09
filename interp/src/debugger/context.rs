@@ -8,7 +8,7 @@ use calyx_ir::Id;
 use owo_colors::OwoColorize;
 use std::collections::HashSet;
 use std::fmt::Display;
-use std::rc::Rc;
+
 use std::{collections::HashMap, sync::Arc};
 
 pub struct Counter(u64);

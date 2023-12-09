@@ -1,4 +1,4 @@
-use calyx_ir::{self as orig_ir, Attributes, Control as CalyxControl, RRC};
+use calyx_ir::{self as orig_ir, Attributes, Control as CalyxControl};
 use calyx_utils::Id;
 
 use std::sync::Arc;
@@ -6,7 +6,7 @@ use std::sync::Arc;
 // These IR constructs are unchanged but are here re-exported for consistency
 pub use calyx_ir::Empty;
 
-use crate::utils::{arctex, ArcTex};
+use crate::utils::ArcTex;
 
 use super::{translator::TranslationMap, Cell, CombGroup, Group, Port};
 

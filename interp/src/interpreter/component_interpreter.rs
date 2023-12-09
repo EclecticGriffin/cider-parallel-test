@@ -20,8 +20,8 @@ use crate::{
     utils::{ArcTex, AsRaw},
     values::Value,
 };
-use calyx_ir::{self as ir, RRC};
-use std::rc::Rc;
+use calyx_ir::{self as ir};
+
 
 enum StructuralOrControl {
     Structural(Box<StructuralInterpreter>),

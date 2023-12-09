@@ -5,20 +5,18 @@
 
 use std::{
     collections::{BTreeMap, HashSet},
-    rc::Rc,
     sync::Arc,
 };
 
 use crate::{
     debugger::{name_tree::ActiveTreeNode, PrintCode},
     environment::{InterpreterState, PrimitiveMap},
-    interpreter::ConstCell,
     interpreter_ir as iir,
     primitives::{Entry, Primitive, Serializable},
     utils::{ArcTex, AsRaw},
     values::Value,
 };
-use calyx_ir::{self as ir, RRC};
+use calyx_ir::{self as ir};
 use serde::Serialize;
 
 use super::names::GroupQIN;

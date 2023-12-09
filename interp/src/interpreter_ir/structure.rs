@@ -111,7 +111,7 @@ pub struct Group {
 impl Group {
     pub(crate) fn from_ir_partial(
         original: &RRC<orig_ir::Group>,
-        translator: &mut TranslationMap,
+        _translator: &mut TranslationMap,
     ) -> Self {
         let orig = original.borrow();
 
@@ -201,7 +201,7 @@ pub struct Cell {
     /// Attributes for this group.
     pub attributes: Attributes,
     /// Whether the cell is external
-    reference: bool,
+    _reference: bool,
 }
 
 impl GetName for Cell {
@@ -213,7 +213,7 @@ impl GetName for Cell {
 impl Cell {
     pub(crate) fn from_ir_partial(
         original: &RRC<orig_ir::Cell>,
-        translator: &mut TranslationMap,
+        _translator: &mut TranslationMap,
     ) -> Self {
         let orig = original.borrow();
 
@@ -222,7 +222,7 @@ impl Cell {
             ports: Default::default(),
             prototype: orig.prototype.clone(),
             attributes: orig.attributes.clone(),
-            reference: orig.is_reference(),
+            _reference: orig.is_reference(),
         }
     }
 

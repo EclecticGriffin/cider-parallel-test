@@ -19,7 +19,7 @@ pub use control::{Control, Empty, Enable, If, Invoke, Par, Seq, While};
 // TODO: De-glob this when ready
 pub use structure::*;
 
-use std::{rc::Rc, sync::Arc};
+use std::sync::Arc;
 pub type ComponentCtx = Arc<Vec<Arc<component::Component>>>;
 pub type ContinuousAssignments = Arc<Vec<Assignment<calyx_ir::Nothing>>>;
 pub use translator::TranslationMap;

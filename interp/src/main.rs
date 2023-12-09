@@ -15,7 +15,6 @@ use rustyline::error::ReadlineError;
 use slog::warn;
 use std::{
     path::{Path, PathBuf},
-    rc::Rc,
     sync::Arc,
 };
 

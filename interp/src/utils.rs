@@ -29,6 +29,7 @@ impl<'a> PartialEq for PortAssignment<'a> {
 
 impl<'a> Eq for PortAssignment<'a> {}
 
+#[allow(dead_code)]
 impl<'a> PortAssignment<'a> {
     /// Construct a new PortAssignment.
     pub fn new(a_ref: &'a Assignment<Nothing>) -> Self {
@@ -135,6 +136,7 @@ impl<T> AsRaw<T> for &RRC<T> {
     }
 }
 
+#[allow(dead_code)]
 pub fn assignment_to_string(
     assignment: &calyx_ir::Assignment<Nothing>,
 ) -> String {
@@ -148,7 +150,7 @@ pub enum RcOrConst<T> {
     Rc(RRC<T>),
     Const(*const T),
 }
-
+#[allow(dead_code)]
 impl<T> RcOrConst<T> {
     pub fn get_rrc(&self) -> Option<RRC<T>> {
         match self {

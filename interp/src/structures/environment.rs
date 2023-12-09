@@ -22,9 +22,9 @@ use crate::{
     utils::{AsRaw, MemoryMap},
     values::Value,
 };
-use calyx_ir::{self as ir, RRC};
+use calyx_ir::{self as ir};
 use ir::{Nothing, PortComp};
-use std::rc::Rc;
+
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,

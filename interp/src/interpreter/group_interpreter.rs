@@ -2,20 +2,19 @@ use super::utils::{self, ConstCell, ConstPort};
 use crate::{environment::InterpreterState, utils::ArcTex};
 use crate::{
     errors::{InterpreterError, InterpreterResult},
-    utils::arctex,
 };
 use crate::{interpreter::utils::get_dest_cells, interpreter_ir::Assignment};
 use crate::{
     interpreter_ir::{Cell, *},
-    utils::{AsRaw, PortAssignment, RcOrConst},
+    utils::{AsRaw},
 };
 use crate::{utils::ArcTexOrConst, values::Value};
-use calyx_ir::{self as ir, RRC};
+use calyx_ir::{self as ir};
 use ir::Nothing;
 use parking_lot::RwLockReadGuard;
 use std::collections::{HashMap, HashSet};
-use std::rc::Rc;
-use std::{cell::Ref, sync::Arc};
+
+use std::{sync::Arc};
 
 use super::control_interpreter::EnableHolder;
 use crate::interpreter_ir as iir;
@@ -191,7 +190,7 @@ impl AssignmentInterpreter {
             }
         }
 
-        let mut state_map = &mut self.state;
+        let state_map = &mut self.state;
 
         for (port, val) in update_list {
             state_map.insert(port, val);
@@ -318,7 +317,7 @@ impl AssignmentInterpreter {
 
             // dbg!(&cells_to_run_rrc);
 
-            let changed = (eval_prims(
+            let changed = eval_prims(
                 &mut self.state,
                 if first_iteration {
                     self.cells.iter()
@@ -326,7 +325,7 @@ impl AssignmentInterpreter {
                     cells_to_run_rrc.iter()
                 },
                 false,
-            )?);
+            )?;
             if changed {
                 self.val_changed = Some(true);
             }
@@ -483,16 +482,16 @@ pub(crate) fn eval_prims<'a, 'b, I: Iterator<Item = &'b ArcTex<Cell>>>(
     let mut update_list: Vec<(ArcTex<Port>, Value)> = vec![];
 
     for cell in exec_list {
-        let inputs = (get_inputs(env, &cell.read()));
+        let inputs = get_inputs(env, &cell.read());
 
         let executable = prim_map.get_mut(&cell.as_raw());
 
         if let Some(prim) = executable {
-            let new_vals = (if reset_flag {
+            let new_vals = if reset_flag {
                 prim.reset(&inputs)
             } else {
                 prim.execute(&inputs)
-            });
+            };
 
             for (port, val) in new_vals? {
                 let port_ref = cell.read().find(port).unwrap();

@@ -1,6 +1,6 @@
+use crate::interpreter_ir;
 use crate::values::Value;
-use crate::{interpreter_ir, utils::assignment_to_string};
-use calyx_ir::{self as ir, Assignment, Id};
+use calyx_ir::{self as ir, Id};
 use calyx_utils::Error as CalyxError;
 use rustyline::error::ReadlineError;
 use thiserror::Error;
@@ -159,14 +159,15 @@ pub enum InterpreterError {
 
 impl InterpreterError {
     pub fn conflicting_assignments(
-        port_id: Id,
-        parent_id: Id,
-        a1: &interpreter_ir::Assignment<ir::Nothing>,
-        a2: &interpreter_ir::Assignment<ir::Nothing>,
+        _port_id: Id,
+        _parent_id: Id,
+        _a1: &interpreter_ir::Assignment<ir::Nothing>,
+        _a2: &interpreter_ir::Assignment<ir::Nothing>,
     ) -> Self {
+        #[allow(unreachable_code)]
         Self::ConflictingAssignments {
-            port_id,
-            parent_id,
+            port_id: _port_id,
+            parent_id: _parent_id,
             a1: todo!(),
             a2: todo!(),
         }

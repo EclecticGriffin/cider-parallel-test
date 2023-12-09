@@ -1,6 +1,7 @@
 use super::group_interpreter::{finish_interpretation, AssignmentInterpreter};
 use super::utils::{get_done_port, get_go_port};
 use super::Interpreter;
+use crate::errors::InterpreterError;
 use crate::structures::names::{
     ComponentQualifiedInstanceName, GroupQIN, GroupQualifiedInstanceName,
 };
@@ -15,15 +16,14 @@ use crate::{
     },
     values::Value,
 };
-use crate::{errors::InterpreterError, utils::arctex};
 use crate::{
     interpreter_ir::*,
     logging::{new_sublogger, warn},
 };
-use calyx_ir::{self as orig_ir, RRC};
+use calyx_ir::{self as orig_ir};
 use calyx_utils::{Id, WithPos};
 use orig_ir::Nothing;
-use std::rc::Rc;
+
 use std::{collections::HashSet, sync::Arc};
 
 /// The key to lookup for the position tags
@@ -1070,7 +1070,6 @@ impl InvokeInterpreter {
         );
 
         drop(comp_cell);
-        drop(invoke);
 
         Self {
             invoke: invoke_ref,

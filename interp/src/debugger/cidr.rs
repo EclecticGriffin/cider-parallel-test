@@ -13,11 +13,11 @@ use crate::utils::AsRaw;
 use crate::{debugger::source::SourceMap, utils::ArcTex};
 use crate::{interpreter_ir as iir, primitives::Serializable};
 
-use calyx_ir::{self as ir, Id, RRC};
+use calyx_ir::{self as ir, Id};
 
 use owo_colors::OwoColorize;
-use parking_lot::{MutexGuard, RwLockReadGuard};
-use std::{cell::Ref, collections::HashMap, rc::Rc};
+use parking_lot::RwLockReadGuard;
+use std::collections::HashMap;
 use std::{fmt::Write, sync::Arc};
 /// Constant amount of space used for debugger messages
 pub(super) const SPACING: &str = "    ";
