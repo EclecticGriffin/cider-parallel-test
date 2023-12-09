@@ -26,7 +26,7 @@ def verify_interpreter_configuration():
         ["fud", "config", "stages.interpreter.exec"],
         "release",
         "The interpreter should be in release mode. "
-        + "To fix this, run `fud config stages.interpreter.exec .<PATH-TO-CALYX>/target/release/interp`.",
+        + "To fix this, run `fud config stages.interpreter.exec .<PATH-TO-CALYX>/target/release/cider`.",
     )
 
     command_has_value(

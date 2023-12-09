@@ -30,25 +30,3 @@ done
 # done
 
 echo "[COMPLETE] interpreter simulation: $PROGRAM"
-echo "[RUNNING] iverilog compilation and simulation: $PROGRAM"
-
-# Gather Icarus-Verilog simulation times.
-for (( i = 0; i < $INTERVALS; ++i ))
-do
-    fud e $PROGRAM --to dat -s verilog.data $DATA --through icarus-verilog -s futil.flags "-x tdcc:no-early-transitions" \
-    -pr icarus-verilog.simulate icarus-verilog.compile_with_iverilog -csv -q \
-    >> $FILE
-done
-
-echo "[COMPLETE] iverilog compilation and simulation: $PROGRAM"
-echo "[RUNNING] verilog compilation and simulation: $PROGRAM"
-
-# Gather Verilog simulation times.
-for (( i = 0; i < $INTERVALS; ++i ))
-do
-    fud e $PROGRAM --to dat --through verilog -s verilog.data $DATA -s futil.flags "-x tdcc:no-early-transitions" \
-    -pr verilog.simulate verilog.compile_with_verilator -csv -q \
-    >> $FILE
-done
-
-echo "[COMPLETE] verilog compilation and simulation: $PROGRAM"
