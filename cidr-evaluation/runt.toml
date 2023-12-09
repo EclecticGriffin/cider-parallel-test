@@ -16,5 +16,5 @@ timeout = 30000
 name = "interpreter lowered"
 paths = ["benchmarks/polybench/*.fuse", "benchmarks/*.futil"]
 cmd = """
-    fud e --to interpreter-out {} -s interpreter.flags " --raw --no-verify" -s verilog.data {}.data -s futil.flags "-x tdcc:no-early-transitions -p all" -q  | jq .main
+    fud e --to interpreter-out {} -s interpreter.flags " --raw --no-verify" -s verilog.data {}.data -s calyx.flags "-x tdcc:no-early-transitions -p all" -q  | jq .main
 """

@@ -18,7 +18,7 @@ echo "[RUNNING] interpreter simulation (fully-lowered): $PROGRAM"
 # Gather Calyx interpreter simulation times.
 for (( i = 0; i < "$INTERVALS"; ++i ))
 do
-    fud e "$PROGRAM" --to interpreter-out -s futil.flags "-p all -x tdcc:no-early-transitions" -s verilog.data "$DATA" \
+    fud e "$PROGRAM" --to interpreter-out -s calyx.flags "-p all -x tdcc:no-early-transitions" -s verilog.data "$DATA" \
     -pr interpreter.interpret -csv -q \
     >> "$FILE"
 done
