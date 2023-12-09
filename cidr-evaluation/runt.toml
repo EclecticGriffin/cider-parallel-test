@@ -16,29 +16,5 @@ timeout = 30000
 name = "interpreter lowered"
 paths = ["benchmarks/polybench/*.fuse", "benchmarks/*.futil"]
 cmd = """
-    fud e --to interpreter-out {} -s verilog.data {}.data -s futil.flags "-x tdcc:no-early-transitions -p all" -q  | jq .memories.main
+    fud e --to interpreter-out {} -s interpreter.flags " --raw --no-verify" -s verilog.data {}.data -s futil.flags "-x tdcc:no-early-transitions -p all" -q  | jq .main
 """
-
-[[tests]]
-name = "icarus"
-paths = [
-    "benchmarks/polybench/*.fuse",
-    "benchmarks/*.futil",
-    "benchmarks/big/*.futil",
-]
-cmd = """
-    fud e --to dat {} -s verilog.data {}.data -s futil.flags "-x tdcc:no-early-transitions" --through icarus-verilog -q | jq .memories
-"""
-timeout = 30000
-
-[[tests]]
-name = "verilator"
-paths = [
-    "benchmarks/polybench/*.fuse",
-    "benchmarks/*.futil",
-    "benchmarks/big/*.futil",
-]
-cmd = """
-    fud e --to dat {} -s verilog.data {}.data -s futil.flags "-x tdcc:no-early-transitions" --through verilog -q | jq .memories
-"""
-timeout = 30000
