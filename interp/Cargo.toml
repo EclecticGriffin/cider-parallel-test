@@ -15,8 +15,7 @@ path = "src/main.rs"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-change-based-sim = []
-default = ["change-based-sim"]
+default = []
 
 [dependencies]
 smallvec = { workspace = true, features = ["union", "const_generics"] }
@@ -47,6 +46,12 @@ calyx-ir = { path = "../calyx-ir" }
 calyx-utils = { path = "../calyx-utils", features = ["serialize"] }
 calyx-opt = { path = "../calyx-opt" }
 calyx-frontend = { path = "../calyx-frontend" }
+
+# new parallel deps
+rayon = "1.8"
+#crossbeam = "0.8"
+parking_lot = "0.12"
+linked-hash-map = "0.5.6"
 
 [dev-dependencies]
 proptest = "1.0.0"

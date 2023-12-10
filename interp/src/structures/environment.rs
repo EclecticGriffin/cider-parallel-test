@@ -5,33 +5,43 @@ use super::names::{
     QualifiedInstanceName,
 };
 use super::stk_env::StackMap;
-use crate::configuration::Config;
-use crate::debugger::name_tree::ActiveTreeNode;
-use crate::errors::{InterpreterError, InterpreterResult};
-use crate::interpreter::{ComponentInterpreter, Interpreter};
-use crate::interpreter_ir as iir;
+use crate::interpreter_ir::{self as iir, Port};
 use crate::primitives::{combinational, stateful, Primitive};
 use crate::structures::state_views::StateView;
+use crate::{configuration::Config, utils::ArcTex};
+use crate::{debugger::name_tree::ActiveTreeNode, utils::arctex};
+use crate::{
+    errors::{InterpreterError, InterpreterResult},
+    interpreter_ir::Cell,
+};
+use crate::{
+    interpreter::{ComponentInterpreter, Interpreter},
+    interpreter_ir::Guard,
+};
 use crate::{
     utils::{AsRaw, MemoryMap},
     values::Value,
 };
-use calyx_ir::{self as ir, RRC};
-use std::collections::{HashMap, HashSet};
-use std::iter::once;
-use std::rc::Rc;
+use calyx_ir::{self as ir};
+use ir::{Nothing, PortComp};
+
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
+use std::{fmt::Debug, iter::once};
 
 /// A raw pointer reference to a cell. Can only be used as a key, but cannot be
 /// used to access the cell itself.
-type ConstCell = *const ir::Cell;
+type ConstCell = *const iir::Cell;
 
 /// A raw pointer reference to a port. As with cell, it is only suitable for use
 /// as a key and cannot be used to access the port itself.
-type ConstPort = *const ir::Port;
+type ConstPort = *const iir::Port;
 
 /// A map defining primitive implementations for Cells. As it is keyed by
 /// ConstCell the lifetime of the keys is independent of the actual cells.
-pub(crate) type PrimitiveMap = RRC<HashMap<ConstCell, Box<dyn Primitive>>>;
+pub(crate) type PrimitiveMap = ArcTex<HashMap<ConstCell, Box<dyn Primitive>>>;
 
 /// A map defining values for ports. As it is keyed by ConstPort, the lifetime of
 /// the keys is independent of the ports. However as a result it is flat, rather
@@ -55,15 +65,32 @@ pub struct InterpreterState {
 
     /// The name of the component this environment is for. Used for printing the
     /// environment state.
-    pub component: Rc<iir::Component>,
+    pub component: Arc<iir::Component>,
 
     /// A hash set which contains pointers to the cells which are sub-components
     /// rather than primitives
-    pub sub_comp_set: Rc<HashSet<ConstCell>>,
+    pub sub_comp_set: Arc<HashSet<ConstCell>>,
 
     /// flag which tells the environment to allow certain par conflicts on
     /// merging
     allow_par_conflicts: bool,
+}
+
+// this is really bad
+unsafe impl Sync for InterpreterState {}
+unsafe impl Send for InterpreterState {}
+
+impl Debug for InterpreterState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("InterpreterState")
+            .field("clk", &self.clk)
+            .field("port_map", &self.port_map)
+            .field("context", &self.context)
+            .field("component", &self.component)
+            .field("sub_comp_set", &self.sub_comp_set)
+            .field("allow_par_conflicts", &self.allow_par_conflicts)
+            .finish()
+    }
 }
 
 /// Helper functions for the environment.
@@ -72,7 +99,7 @@ impl InterpreterState {
     /// ctx : A context from the IR
     pub fn init_top_level(
         ctx: &iir::ComponentCtx,
-        target: &Rc<iir::Component>,
+        target: &Arc<iir::Component>,
         mems: &mut Option<MemoryMap>,
         configs: &Config,
     ) -> InterpreterResult<Self> {
@@ -83,12 +110,12 @@ impl InterpreterState {
             Self::construct_cell_map(target, ctx, mems, &qin, configs)?;
 
         Ok(Self {
-            context: Rc::clone(ctx),
+            context: Arc::clone(ctx),
             clk: 0,
             port_map: InterpreterState::construct_port_map(target),
             cell_map: map,
             component: target.clone(),
-            sub_comp_set: Rc::new(set),
+            sub_comp_set: Arc::new(set),
             allow_par_conflicts: configs.allow_par_conflicts,
         })
     }
@@ -99,7 +126,7 @@ impl InterpreterState {
     /// in addition to the other details.
     pub fn init(
         ctx: &iir::ComponentCtx,
-        target: &Rc<iir::Component>,
+        target: &Arc<iir::Component>,
         mems: &mut Option<MemoryMap>,
         qin: &ComponentQualifiedInstanceName,
         configs: &Config,
@@ -108,18 +135,18 @@ impl InterpreterState {
             Self::construct_cell_map(target, ctx, mems, qin, configs)?;
 
         Ok(Self {
-            context: Rc::clone(ctx),
+            context: Arc::clone(ctx),
             clk: 0,
             port_map: InterpreterState::construct_port_map(target),
             cell_map: map,
             component: target.clone(),
-            sub_comp_set: Rc::new(set),
+            sub_comp_set: Arc::new(set),
             allow_par_conflicts: configs.allow_par_conflicts,
         })
     }
 
     /// Insert a new value for the given constant port into the environment
-    pub fn insert<P: AsRaw<ir::Port>>(&mut self, port: P, value: Value) {
+    pub fn insert<P: AsRaw<iir::Port>>(&mut self, port: P, value: Value) {
         self.port_map.set(port.as_raw(), value);
     }
 
@@ -136,6 +163,7 @@ impl InterpreterState {
     ) -> InterpreterResult<Box<dyn Primitive>> {
         let cell_qin = QualifiedInstanceName::new(qin_name, cell_name).as_id();
         Ok(match prim_name.as_ref() {
+            "undef" => Box::new(combinational::Undef::new(params, cell_qin)),
             "std_const" => {
                 Box::new(combinational::StdConst::new(params, cell_qin))
             }
@@ -440,7 +468,7 @@ impl InterpreterState {
     /// An internal helper function which inflates a mapping for all cells in a
     /// component, recursively realizing sub-components as needed.
     fn construct_cell_map(
-        comp: &Rc<iir::Component>,
+        comp: &Arc<iir::Component>,
         ctx: &iir::ComponentCtx,
         mems: &mut Option<MemoryMap>,
         qin_name: &ComponentQualifiedInstanceName,
@@ -449,7 +477,7 @@ impl InterpreterState {
         let mut map = HashMap::new();
         let mut set = HashSet::new();
         for cell in comp.cells.iter() {
-            let cl: &ir::Cell = &cell.borrow();
+            let cl: &Cell = &cell.read();
 
             match &cl.prototype {
                 ir::CellType::Primitive {
@@ -487,7 +515,7 @@ impl InterpreterState {
                 _ => {}
             }
         }
-        Ok((ir::rrc(map), set))
+        Ok((arctex(map), set))
     }
 
     /// A helper meathod which constructs the initial environment map from ports
@@ -496,31 +524,31 @@ impl InterpreterState {
     fn construct_port_map(comp: &iir::Component) -> PortValMap {
         let mut map = HashMap::new();
 
-        for port in comp.signature.borrow().ports.iter() {
-            let pt: &ir::Port = &port.borrow();
+        for port in comp.signature.read().ports.iter() {
+            let pt: &iir::Port = &port.read();
             map.insert(pt as ConstPort, Value::zeroes(pt.width as usize));
         }
         for group in comp.groups.iter() {
-            let grp = group.borrow();
+            let grp = group.read();
             for hole in &grp.holes {
-                let pt: &ir::Port = &hole.borrow();
+                let pt: &iir::Port = &hole.read();
                 map.insert(pt as ConstPort, Value::zeroes(pt.width as usize));
             }
         }
         for cell in comp.cells.iter() {
             //also iterate over groups cuz they also have ports
             //iterate over ports, getting their value and putting into map
-            let cll = cell.borrow();
+            let cll = cell.read();
             match &cll.prototype {
                 ir::CellType::Constant { val, width } => {
                     for port in &cll.ports {
-                        let pt: &ir::Port = &port.borrow();
+                        let pt: &iir::Port = &port.read();
                         map.insert(pt as ConstPort, Value::from(*val, *width));
                     }
                 }
                 ir::CellType::Primitive { .. } => {
                     for port in &cll.ports {
-                        let pt: &ir::Port = &port.borrow();
+                        let pt: &iir::Port = &port.read();
                         map.insert(
                             pt as ConstPort,
                             Value::from(
@@ -532,7 +560,7 @@ impl InterpreterState {
                 }
                 ir::CellType::Component { .. } => {
                     for port in &cll.ports {
-                        let pt: &ir::Port = &port.borrow();
+                        let pt: &iir::Port = &port.read();
                         map.insert(
                             pt as ConstPort,
                             Value::zeroes(pt.width as usize),
@@ -547,7 +575,7 @@ impl InterpreterState {
     }
 
     /// Return the value associated with a component's port.
-    pub fn get_from_port<P: AsRaw<ir::Port>>(&self, port: P) -> &Value {
+    pub fn get_from_port<P: AsRaw<iir::Port>>(&self, port: P) -> &Value {
         self.port_map.get(&port.as_raw()).unwrap()
     }
 
@@ -570,12 +598,8 @@ impl InterpreterState {
     }
     /// A predicate that checks if the given cell points to a combinational
     /// primitive (or component?)
-    pub fn cell_is_comb<C: AsRaw<ir::Cell>>(&self, cell: C) -> bool {
-        self.cell_map
-            .borrow()
-            .get(&cell.as_raw())
-            .unwrap()
-            .is_comb()
+    pub fn cell_is_comb<C: AsRaw<iir::Cell>>(&self, cell: C) -> bool {
+        self.cell_map.read().get(&cell.as_raw()).unwrap().is_comb()
     }
 
     /// Creates a fork of the source environment which has the same clock and
@@ -592,9 +616,9 @@ impl InterpreterState {
             clk: self.clk,
             cell_map: self.cell_map.clone(),
             port_map: other_pv_map,
-            context: Rc::clone(&self.context),
+            context: Arc::clone(&self.context),
             component: self.component.clone(),
-            sub_comp_set: Rc::clone(&self.sub_comp_set),
+            sub_comp_set: Arc::clone(&self.sub_comp_set),
             allow_par_conflicts: self.allow_par_conflicts,
         }
     }
@@ -607,9 +631,9 @@ impl InterpreterState {
             clk: self.clk,
             cell_map: self.cell_map.clone(),
             port_map: self.port_map.fork(),
-            context: Rc::clone(&self.context),
+            context: Arc::clone(&self.context),
             component: self.component.clone(),
-            sub_comp_set: Rc::clone(&self.sub_comp_set),
+            sub_comp_set: Arc::clone(&self.sub_comp_set),
             allow_par_conflicts: self.allow_par_conflicts,
         }
     }
@@ -618,7 +642,7 @@ impl InterpreterState {
     pub fn merge_many(
         mut self,
         others: Vec<Self>,
-        overlap: &HashSet<*const ir::Port>,
+        overlap: &HashSet<*const Port>,
     ) -> InterpreterResult<Self> {
         let clk = others
             .iter()
@@ -660,50 +684,48 @@ impl InterpreterState {
     /// exactly one bit.
     pub fn eval_guard(
         &self,
-        guard: &ir::Guard<ir::Nothing>,
+        guard: &Guard<Nothing>,
     ) -> InterpreterResult<bool> {
         Ok(match guard {
-            ir::Guard::Or(g1, g2) => {
-                self.eval_guard(g1)? || self.eval_guard(g2)?
-            }
-            ir::Guard::And(g1, g2) => {
+            Guard::Or(g1, g2) => self.eval_guard(g1)? || self.eval_guard(g2)?,
+            Guard::And(g1, g2) => {
                 self.eval_guard(g1)? && self.eval_guard(g2)?
             }
-            ir::Guard::Not(g) => !self.eval_guard(g)?,
-            ir::Guard::CompOp(op, g1, g2) => {
-                let p1 = self.get_from_port(&g1.borrow());
-                let p2 = self.get_from_port(&g2.borrow());
+            Guard::Not(g) => !self.eval_guard(g)?,
+            Guard::CompOp(op, g1, g2) => {
+                let p1 = self.get_from_port(&*g1.read());
+                let p2 = self.get_from_port(&*g2.read());
                 match op {
-                    ir::PortComp::Eq => p1 == p2,
-                    ir::PortComp::Neq => p1 != p2,
-                    ir::PortComp::Gt => p1 > p2,
-                    ir::PortComp::Lt => p1 < p2,
-                    ir::PortComp::Geq => p1 >= p2,
-                    ir::PortComp::Leq => p1 <= p2,
+                    PortComp::Eq => p1 == p2,
+                    PortComp::Neq => p1 != p2,
+                    PortComp::Gt => p1 > p2,
+                    PortComp::Lt => p1 < p2,
+                    PortComp::Geq => p1 >= p2,
+                    PortComp::Leq => p1 <= p2,
                 }
             }
-            ir::Guard::Port(p) => {
-                let val = self.get_from_port(&p.borrow());
+            Guard::Port(p) => {
+                let val = self.get_from_port(&*p.read());
                 if val.len() != 1 {
-                    let can = p.borrow().canonical();
+                    let can = p.read().canonical();
                     return Err(InterpreterError::InvalidBoolCast(
                         (can.0, can.1),
-                        p.borrow().width,
+                        p.read().width,
                     )
                     .into());
                 } else {
                     val.as_bool()
                 }
             }
-            ir::Guard::True => true,
-            ir::Guard::Info(_) => panic!("unimplemented"),
+            Guard::True => true,
+            Guard::Info(_) => panic!("unimplemented"),
         })
     }
 
     /// Provides a hash set containing the qualified names of the currently
     /// active sub-components
     pub fn sub_component_currently_executing(&self) -> HashSet<GroupQIN> {
-        let lookup = self.cell_map.borrow();
+        let lookup = self.cell_map.read();
 
         self.sub_comp_set
             .iter()
@@ -721,7 +743,7 @@ impl InterpreterState {
     }
 
     pub fn get_active_tree(&self) -> Vec<ActiveTreeNode> {
-        let lookup = self.cell_map.borrow();
+        let lookup = self.cell_map.read();
 
         self.sub_comp_set
             .iter()

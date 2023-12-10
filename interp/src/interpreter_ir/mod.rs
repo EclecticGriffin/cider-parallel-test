@@ -11,10 +11,15 @@
 mod component;
 mod control;
 
+mod structure;
+mod translator;
+
 pub use component::Component;
 pub use control::{Control, Empty, Enable, If, Invoke, Par, Seq, While};
+// TODO: De-glob this when ready
+pub use structure::*;
 
-use std::rc::Rc;
-pub type ComponentCtx = Rc<Vec<Rc<component::Component>>>;
-pub type ContinuousAssignments =
-    Rc<Vec<calyx_ir::Assignment<calyx_ir::Nothing>>>;
+use std::sync::Arc;
+pub type ComponentCtx = Arc<Vec<Arc<component::Component>>>;
+pub type ContinuousAssignments = Arc<Vec<Assignment<calyx_ir::Nothing>>>;
+pub use translator::TranslationMap;

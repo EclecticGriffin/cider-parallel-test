@@ -612,7 +612,7 @@ impl Value {
 
     /// Interprets a 1bit value as a bool, will not panic for non-1-bit values
     pub fn as_bool(&self) -> bool {
-        assert!(self.vec.len() == 1);
+        assert_eq!(self.vec.len(), 1);
         self.vec[0]
     }
 

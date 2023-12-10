@@ -543,7 +543,7 @@ impl<StaticTiming> Assignment<StaticTiming> {
 }
 
 /// A Group of assignments that perform a logical action.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub struct Group {
     /// Name of this group
@@ -713,7 +713,7 @@ impl StaticGroup {
 /// A combinational group.
 /// A combinational group does not have any holes and should only contain assignments that should
 /// will be combinationally active
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub struct CombGroup {
     /// Name of this group

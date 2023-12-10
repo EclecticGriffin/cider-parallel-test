@@ -1,0 +1,20 @@
+ver = "0.4.0"
+
+[[tests]]
+name = "interpreter high"
+paths = [
+    "benchmarks/polybench/*.fuse",
+    "benchmarks/*.futil",
+    "benchmarks/big/*.futil",
+]
+cmd = """
+    fud e --to interpreter-out {} -s interpreter.flags " --raw --no-verify" -s verilog.data {}.data -q | jq .main
+"""
+timeout = 30000
+
+[[tests]]
+name = "interpreter lowered"
+paths = ["benchmarks/polybench/*.fuse", "benchmarks/*.futil"]
+cmd = """
+    fud e --to interpreter-out {} -s interpreter.flags " --raw --no-verify" -s verilog.data {}.data -s calyx.flags "-x tdcc:no-early-transitions -p all" -q  | jq .main
+"""

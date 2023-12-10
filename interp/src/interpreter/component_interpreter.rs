@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::Arc};
 
 use super::{
     control_interpreter::{
@@ -11,17 +11,17 @@ use crate::{
     debugger::{name_tree::ActiveTreeNode, PrintCode},
     environment::InterpreterState,
     errors::InterpreterResult,
-    interpreter_ir as iir,
+    interpreter_ir::{self as iir, Component, Control, Port, PortParent},
     primitives::{Named, Primitive},
     structures::names::{
         ComponentQualifiedInstanceName, GroupQIN, GroupQualifiedInstanceName,
     },
     structures::state_views::{MutStateView, StateView},
-    utils::AsRaw,
+    utils::{ArcTex, AsRaw},
     values::Value,
 };
-use calyx_ir::{self as ir, Port, RRC};
-use std::rc::Rc;
+use calyx_ir::{self as ir};
+
 
 enum StructuralOrControl {
     Structural(Box<StructuralInterpreter>),
@@ -58,13 +58,13 @@ impl From<ControlInterpreter> for StructuralOrControl {
 
 pub struct ComponentInterpreter {
     interp: StructuralOrControl,
-    input_ports: Vec<RRC<Port>>,
-    output_ports: Vec<RRC<Port>>,
-    comp_ref: Rc<iir::Component>,
-    control_ref: iir::Control,
-    done_port: RRC<Port>,
-    go_port: RRC<Port>,
-    input_hash_set: Rc<HashSet<*const ir::Port>>,
+    input_ports: Vec<ArcTex<Port>>,
+    output_ports: Vec<ArcTex<Port>>,
+    comp_ref: Arc<Component>,
+    control_ref: Control,
+    done_port: ArcTex<Port>,
+    go_port: ArcTex<Port>,
+    input_hash_set: Arc<HashSet<*const Port>>,
     qual_name: ComponentQualifiedInstanceName,
     /// used to satisfy the Named requirement for primitives, primarially for error messages
     full_name_clone: ir::Id,
@@ -73,21 +73,21 @@ pub struct ComponentInterpreter {
 impl ComponentInterpreter {
     pub fn make_main_component(
         env: InterpreterState,
-        comp: &Rc<iir::Component>,
+        comp: &Arc<iir::Component>,
     ) -> Self {
         let qin = ComponentQualifiedInstanceName::new_single(comp, comp.name);
         Self::from_component(comp, env, qin)
     }
 
     pub fn from_component(
-        comp: &Rc<iir::Component>,
+        comp: &Arc<iir::Component>,
         env: InterpreterState,
         qin: ComponentQualifiedInstanceName,
     ) -> Self {
         let (mut inputs, mut outputs) = (Vec::new(), Vec::new());
 
-        for port in comp.signature.borrow().ports.iter() {
-            let pt_ref = port.borrow();
+        for port in comp.signature.read().ports.iter() {
+            let pt_ref = port.read();
             match &pt_ref.direction {
                 ir::Direction::Input => outputs.push(port.clone()),
                 ir::Direction::Output => inputs.push(port.clone()),
@@ -101,13 +101,13 @@ impl ComponentInterpreter {
 
         let go_port = inputs
             .iter()
-            .find(|x| x.borrow().attributes.has(ir::NumAttr::Go))
+            .find(|x| x.read().attributes.has(ir::NumAttr::Go))
             .unwrap()
             .clone();
 
         let done_port = outputs
             .iter()
-            .find(|x| x.borrow().attributes.has(ir::NumAttr::Done))
+            .find(|x| x.read().attributes.has(ir::NumAttr::Done))
             .unwrap()
             .clone();
 
@@ -118,12 +118,12 @@ impl ComponentInterpreter {
         // Need to include continuous assignments in the override
         for assignment in comp.continuous_assignments.iter() {
             override_set.insert(assignment.dst.as_raw());
-            let dst_ref = assignment.dst.borrow();
-            if let ir::PortParent::Cell(c) = &dst_ref.parent {
+            let dst_ref = assignment.dst.read();
+            if let PortParent::Cell(c) = &dst_ref.parent {
                 let cell = c.upgrade();
-                let cell_ref = cell.borrow();
+                let cell_ref = cell.read();
                 for port in cell_ref.ports() {
-                    let port_ref = port.borrow();
+                    let port_ref = port.read();
                     if let calyx_ir::Direction::Output = port_ref.direction {
                         override_set.insert(port.as_raw());
                     }
@@ -131,7 +131,7 @@ impl ComponentInterpreter {
             }
         }
 
-        let input_hash_set = Rc::new(override_set);
+        let input_hash_set = Arc::new(override_set);
 
         let interp = if control_is_empty(&control) {
             StructuralInterpreter::from_component(comp, env).into()
@@ -153,7 +153,7 @@ impl ComponentInterpreter {
             interp,
             input_ports: inputs,
             output_ports: outputs,
-            comp_ref: Rc::clone(comp),
+            comp_ref: Arc::clone(comp),
             control_ref: control,
             go_port,
             done_port,
@@ -168,7 +168,7 @@ impl ComponentInterpreter {
         self.output_ports
             .iter()
             .map(|x| {
-                let port_ref = x.borrow();
+                let port_ref = x.read();
                 (port_ref.name, env.lookup(x.as_raw()).clone())
             })
             .collect()
@@ -176,12 +176,12 @@ impl ComponentInterpreter {
 
     #[inline]
     fn go_is_high(&self) -> bool {
-        self.get_env().lookup(self.go_port.as_raw()).as_bool()
+        self.get_env().lookup(&self.go_port).as_bool()
     }
 
     #[inline]
     fn done_is_high(&self) -> bool {
-        self.get_env().lookup(self.done_port.as_raw()).as_bool()
+        self.get_env().lookup(&self.done_port).as_bool()
     }
 
     #[inline]
@@ -211,7 +211,7 @@ impl ComponentInterpreter {
     /// Interpret a calyx program from the root
     pub fn interpret_program(
         env: InterpreterState,
-        comp: &Rc<iir::Component>,
+        comp: &Arc<iir::Component>,
     ) -> InterpreterResult<InterpreterState> {
         let qin = ComponentQualifiedInstanceName::new_single(comp, comp.name);
         let mut main_comp = Self::from_component(comp, env, qin);
@@ -372,9 +372,9 @@ impl Primitive for ComponentInterpreter {
             let port = self
                 .input_ports
                 .iter()
-                .find(|x| x.borrow().name == name)
+                .find(|x| x.read().name == name)
                 .expect("Component given non-existant input");
-            assert_eq!(port.borrow().width, value.width())
+            assert_eq!(port.read().width, value.width())
         }
     }
 
@@ -382,14 +382,14 @@ impl Primitive for ComponentInterpreter {
         &mut self,
         inputs: &[(ir::Id, &crate::values::Value)],
     ) -> InterpreterResult<Vec<(ir::Id, crate::values::Value)>> {
-        let mut assigned = HashSet::new();
+        let mut assigned: HashSet<*const Port> = HashSet::new();
         let mut input_vec = inputs
             .iter()
             .map(|(name, val)| {
                 let port = self
                     .input_ports
                     .iter()
-                    .find(|x| x.borrow().name == name)
+                    .find(|x| x.read().name == name)
                     .unwrap();
                 assigned.insert(port.as_raw());
                 (port.as_raw(), (*val).clone())
@@ -398,7 +398,7 @@ impl Primitive for ComponentInterpreter {
 
         for port in &self.input_ports {
             if !assigned.contains(&port.as_raw()) {
-                let pt_ref = port.borrow();
+                let pt_ref = port.read();
                 input_vec.push((
                     port.as_raw(),
                     Value::zeroes(pt_ref.width as usize),

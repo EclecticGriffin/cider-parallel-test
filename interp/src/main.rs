@@ -9,13 +9,13 @@ use interp::{
     environment::InterpreterState,
     errors::{InterpreterError, InterpreterResult},
     interpreter::ComponentInterpreter,
-    interpreter_ir as iir,
+    interpreter_ir::{self as iir, Component, TranslationMap},
 };
 use rustyline::error::ReadlineError;
 use slog::warn;
 use std::{
     path::{Path, PathBuf},
-    rc::Rc,
+    sync::Arc,
 };
 
 #[derive(FromArgs)]
@@ -166,10 +166,12 @@ fn main() -> InterpreterResult<()> {
 
     let metadata = ctx.metadata;
 
-    let components: iir::ComponentCtx = Rc::new(
+    let mut transformer = TranslationMap::new();
+
+    let components: iir::ComponentCtx = Arc::new(
         ctx.components
-            .into_iter()
-            .map(|x| Rc::new(x.into()))
+            .iter()
+            .map(|x| Arc::new(Component::from_ir(x, &mut transformer)))
             .collect(),
     );
 

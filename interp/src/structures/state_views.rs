@@ -5,19 +5,18 @@
 
 use std::{
     collections::{BTreeMap, HashSet},
-    rc::Rc,
+    sync::Arc,
 };
 
 use crate::{
     debugger::{name_tree::ActiveTreeNode, PrintCode},
     environment::{InterpreterState, PrimitiveMap},
-    interpreter::ConstCell,
     interpreter_ir as iir,
     primitives::{Entry, Primitive, Serializable},
-    utils::AsRaw,
+    utils::{ArcTex, AsRaw},
     values::Value,
 };
-use calyx_ir::{self as ir, RRC};
+use calyx_ir::{self as ir};
 use serde::Serialize;
 
 use super::names::GroupQIN;
@@ -76,7 +75,7 @@ impl<'inner> MutCompositeView<'inner> {
     /// issues)
     pub fn insert<P>(&mut self, port: P, value: Value)
     where
-        P: AsRaw<ir::Port>,
+        P: AsRaw<iir::Port>,
     {
         let raw = port.as_raw();
         self.0.insert(raw, value.clone());
@@ -101,7 +100,7 @@ impl<'a> From<MutCompositeView<'a>> for MutStateView<'a> {
 impl<'a> MutStateView<'a> {
     /// Updates the value of the given port to the given value for this state
     /// view.
-    pub fn insert<P: AsRaw<ir::Port>>(&mut self, port: P, value: Value) {
+    pub fn insert<P: AsRaw<iir::Port>>(&mut self, port: P, value: Value) {
         match self {
             MutStateView::Single(s) => s.insert(port, value),
             MutStateView::Composite(c) => c.insert(port, value),
@@ -132,7 +131,7 @@ impl<'a> StateView<'a> {
     /// # TODO (Griffin):
     /// This should probably have an option/result variant to surface the
     /// parallel disagreement more effectively and avoid erroring out
-    pub fn lookup<P: AsRaw<ir::Port>>(&self, target: P) -> &Value {
+    pub fn lookup<P: AsRaw<iir::Port>>(&self, target: P) -> &Value {
         match self {
             StateView::SingleView(sv) => sv.get_from_port(target),
             StateView::Composite(cv) => match cv.1.len() {
@@ -190,7 +189,7 @@ impl<'a> StateView<'a> {
     }
 
     /// An accessor for the component at the root of this environment
-    pub fn get_comp(&self) -> &Rc<iir::Component> {
+    pub fn get_comp(&self) -> &Arc<iir::Component> {
         match self {
             StateView::SingleView(c) => &c.component,
             StateView::Composite(c) => &c.0.component,
@@ -206,13 +205,13 @@ impl<'a> StateView<'a> {
 
     /// An accessor which looks up the representation of a the given cell's
     /// state, defaulting to [Serializable::Empty] if no state is present
-    pub fn get_cell_state<R: AsRaw<ir::Cell>>(
+    pub fn get_cell_state<R: AsRaw<iir::Cell>>(
         &self,
         cell: R,
         print_code: &PrintCode,
     ) -> Serializable {
         let map = self.get_cell_map();
-        let map_ref = map.borrow();
+        let map_ref = map.read();
         map_ref
             .get(&cell.as_raw())
             .map(|x| Primitive::serialize(&**x, Some(*print_code)))
@@ -227,7 +226,7 @@ impl<'a> StateView<'a> {
 
     /// Return a vector RRCs for all cells (across any component) which have the given
     /// name
-    pub fn get_cells<S>(&self, name: S) -> Vec<RRC<ir::Cell>>
+    pub fn get_cells<S>(&self, name: S) -> Vec<ArcTex<iir::Cell>>
     where
         S: Into<ir::Id> + Clone,
     {
@@ -240,7 +239,7 @@ impl<'a> StateView<'a> {
 
     /// Return an RRC for the given cell if it exists within the root component
     /// of the environment. Otherwise None
-    pub fn get_cell<S>(&self, name: S) -> Option<RRC<ir::Cell>>
+    pub fn get_cell<S>(&self, name: S) -> Option<ArcTex<iir::Cell>>
     where
         S: Into<ir::Id> + Clone,
     {
@@ -257,7 +256,7 @@ impl<'a> StateView<'a> {
     /// Note this code is a complete nightmare and I apologize for it
     pub fn gen_serializer(&self, raw: bool) -> FullySerialize {
         let ctx = self.get_ctx();
-        let cell_prim_map = &self.get_cell_map().borrow();
+        let cell_prim_map = &self.get_cell_map().read();
 
         let bmap: BTreeMap<_, _> = ctx
             .iter()
@@ -268,15 +267,15 @@ impl<'a> StateView<'a> {
                     .iter()
                     .map(|cell| {
                         let inner_map: BTreeMap<_, _> = cell
-                            .borrow()
+                            .read()
                             .ports
                             .iter()
                             .map(|port| {
                                 let value = self.lookup(port.as_raw());
 
                                 (
-                                    port.borrow().name,
-                                    if port.borrow().attributes.has(
+                                    port.read().name,
+                                    if port.read().attributes.has(
                                         ir::Attribute::Unknown(
                                             "interp_signed".into(),
                                         ),
@@ -288,7 +287,7 @@ impl<'a> StateView<'a> {
                                 )
                             })
                             .collect();
-                        (cell.borrow().name(), inner_map)
+                        (cell.read().name(), inner_map)
                     })
                     .collect();
                 (comp.name, inner_map)
@@ -302,11 +301,11 @@ impl<'a> StateView<'a> {
                     .cells
                     .iter()
                     .filter_map(|cell_ref| {
-                        let cell = cell_ref.borrow();
+                        let cell = cell_ref.read();
                         if cell.get_attribute(ir::BoolAttr::External).is_some()
                         {
-                            if let Some(prim) = cell_prim_map
-                                .get(&(&cell as &ir::Cell as ConstCell))
+                            if let Some(prim) =
+                                cell_prim_map.get(&(cell.as_raw()))
                             {
                                 if !prim.is_comb() {
                                     return Some((

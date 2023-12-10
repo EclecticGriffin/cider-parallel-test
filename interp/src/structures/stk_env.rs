@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::convert::TryInto;
 use std::hash::Hash;
 use std::mem;
-use std::rc::Rc;
+use std::sync::Arc;
 
 /// A handle to a singly linked list
 /// From "Learning Rust with Entirely Too Many Linked Lists" (2018), Chapter 4.5:
@@ -15,7 +15,7 @@ pub struct List<T> {
 }
 
 /// A type alias for the links between entries in the list
-type Link<T> = Option<Rc<Node<T>>>;
+type Link<T> = Option<Arc<Node<T>>>;
 
 /// A structure representing a single list node which contains some element and
 /// a link of type [Link] which may be empty.
@@ -40,7 +40,7 @@ impl<T> Drop for List<T> {
     fn drop(&mut self) {
         let mut head = self.head.take();
         while let Some(node) = head {
-            if let Ok(mut node) = Rc::try_unwrap(node) {
+            if let Ok(mut node) = Arc::try_unwrap(node) {
                 head = node.next.take();
             } else {
                 break;
@@ -56,7 +56,7 @@ impl<T> List<T> {
     /// returns the original list handle.
     fn unwrap_head(mut self) -> Result<Node<T>, Self> {
         if let Some(head) = self.head.take() {
-            match Rc::try_unwrap(head) {
+            match Arc::try_unwrap(head) {
                 Ok(n) => Ok(n),
                 Err(rc) => {
                     self.head = Some(rc);
@@ -108,7 +108,7 @@ impl<T> List<T> {
         }
         let self_head = self.head.as_ref().unwrap();
         let other_head = other.head.as_ref().unwrap();
-        Rc::as_ptr(self_head) == Rc::as_ptr(other_head)
+        Arc::as_ptr(self_head) == Arc::as_ptr(other_head)
     }
 
     /// Tests if the head of `self` is [None], or [Some(nd)]
@@ -128,7 +128,7 @@ impl<T> List<T> {
     /// Returns a list identical to `self`, with `elem` pushed onto the front
     pub fn push(&self, elem: T) -> List<T> {
         List {
-            head: Some(Rc::new(Node {
+            head: Some(Arc::new(Node {
                 elem,
                 next: self.head.clone(),
             })),
@@ -181,7 +181,7 @@ impl<T> List<T> {
                     (Some(head.elem), tail_list)
                 }
                 Err(e) => {
-                    panic!("Cannot unwrap the head of this list. You probably tried Smooshing while a fork exists! Current strong count {}", Rc::strong_count(e.head.as_ref().unwrap()));
+                    panic!("Cannot unwrap the head of this list. You probably tried Smooshing while a fork exists! Current strong count {}", Arc::strong_count(e.head.as_ref().unwrap()));
                 }
             }
         }
@@ -796,7 +796,7 @@ impl<K: Eq + Hash, V: Eq> StackMap<K, V> {
     /// # Examples
     /// ## Pictorial Example
     /// ```text
-    /// Smoosher 1: (A, B, C, F, G), Smoosher 2: (D, E, F, G), Smoosher 3: (J, I, H, F, G)       
+    /// Smoosher 1: (A, B, C, F, G), Smoosher 2: (D, E, F, G), Smoosher 3: (J, I, H, F, G)
     /// [A]       [J]
     ///  |        |
     /// [B]      [I]   [D]

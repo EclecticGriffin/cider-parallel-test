@@ -1,0 +1,24 @@
+simulation,stage,mean,median,stddev
+NTT 32,interpreter,0.089,0.077,0.039
+NTT 64,interpreter,0.164,0.164,0.003
+TCAM 32,interpreter,0.934,0.934,0.011
+TCAM 64,interpreter,1.851,1.848,0.009
+Linear Algebra 2MM,interpreter,0.989,0.986,0.017
+Linear Algebra 3MM,interpreter,1.103,1.102,0.014
+Linear Algebra ATAX,interpreter,0.139,0.139,0.004
+Linear Algebra BICG,interpreter,0.082,0.082,0.005
+Linear Algebra DOITGEN,interpreter,3.013,3.016,0.016
+Linear Algebra DURBIN,interpreter,0.069,0.067,0.008
+Linear Algebra GEMM,interpreter,0.538,0.536,0.013
+Linear Algebra GEMVER,interpreter,0.256,0.255,0.006
+Linear Algebra GESUMMV,interpreter,0.169,0.169,0.004
+Linear Algebra LU,interpreter,0.14,0.138,0.006
+Linear Algebra LUDCMP,interpreter,0.186,0.185,0.012
+Linear Algebra MVT,interpreter,0.13,0.129,0.005
+Linear Algebra SYMM,interpreter,0.603,0.603,0.01
+Linear Algebra SYR2K,interpreter,0.991,0.989,0.009
+Linear Algebra SYRK,interpreter,0.695,0.697,0.015
+Linear Algebra TRISOLV,interpreter,0.033,0.034,0.003
+Linear Algebra TRMM,interpreter,0.297,0.296,0.008
+Linear Algebra Cholesky,interpreter,0.096,0.095,0.009
+Linear Algebra Gramschmidt,interpreter,0.977,0.978,0.013

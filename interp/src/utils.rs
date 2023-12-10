@@ -1,17 +1,19 @@
+use crate::interpreter_ir::*;
 use crate::values::Value;
-use calyx_ir::{self as ir, Assignment, Binding, Id, Port, RRC};
+use calyx_ir::{Binding, Id, Nothing, RRC};
+use parking_lot::{RwLock, RwLockReadGuard};
 use serde::Deserialize;
-use std::cell::Ref;
-use std::collections::HashMap;
 use std::fs;
 use std::hash::{Hash, Hasher};
 use std::ops::{Deref, DerefMut};
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::{cell::Ref, sync::Arc};
+use std::{collections::HashMap, sync::Weak};
 
 pub use crate::debugger::PrintCode;
 /// A wrapper to enable hashing of assignments by their destination port.
-pub(super) struct PortAssignment<'a>(*const Port, &'a Assignment<ir::Nothing>);
+pub(super) struct PortAssignment<'a>(*const Port, &'a Assignment<Nothing>);
 
 impl<'a> Hash for PortAssignment<'a> {
     fn hash<H: Hasher>(&self, state: &mut H) {
@@ -27,9 +29,10 @@ impl<'a> PartialEq for PortAssignment<'a> {
 
 impl<'a> Eq for PortAssignment<'a> {}
 
+#[allow(dead_code)]
 impl<'a> PortAssignment<'a> {
     /// Construct a new PortAssignment.
-    pub fn new(a_ref: &'a Assignment<ir::Nothing>) -> Self {
+    pub fn new(a_ref: &'a Assignment<Nothing>) -> Self {
         Self(a_ref.dst.as_raw(), a_ref)
     }
 
@@ -39,7 +42,7 @@ impl<'a> PortAssignment<'a> {
     }
 
     /// Get the associated assignment.
-    pub fn get_assignment(&self) -> &Assignment<ir::Nothing> {
+    pub fn get_assignment(&self) -> &Assignment<Nothing> {
         self.1
     }
 }
@@ -133,11 +136,12 @@ impl<T> AsRaw<T> for &RRC<T> {
     }
 }
 
+#[allow(dead_code)]
 pub fn assignment_to_string(
-    assignment: &ir::Assignment<ir::Nothing>,
+    assignment: &calyx_ir::Assignment<Nothing>,
 ) -> String {
     let mut str = vec![];
-    ir::Printer::write_assignment(assignment, 0, &mut str)
+    calyx_ir::Printer::write_assignment(assignment, 0, &mut str)
         .expect("Write Failed");
     String::from_utf8(str).expect("Found invalid UTF-8")
 }
@@ -146,7 +150,7 @@ pub enum RcOrConst<T> {
     Rc(RRC<T>),
     Const(*const T),
 }
-
+#[allow(dead_code)]
 impl<T> RcOrConst<T> {
     pub fn get_rrc(&self) -> Option<RRC<T>> {
         match self {
@@ -180,5 +184,99 @@ impl<T> AsRaw<T> for RcOrConst<T> {
             RcOrConst::Rc(a) => a.as_raw(),
             RcOrConst::Const(a) => *a,
         }
+    }
+}
+
+pub type ArcTex<T> = Arc<RwLock<T>>;
+pub fn arctex<T>(input: T) -> ArcTex<T> {
+    Arc::new(RwLock::new(input))
+}
+
+impl<T> AsRaw<T> for ArcTex<T> {
+    fn as_raw(&self) -> *const T {
+        self.data_ptr()
+    }
+}
+
+impl<T> AsRaw<T> for &ArcTex<T> {
+    fn as_raw(&self) -> *const T {
+        self.data_ptr()
+    }
+}
+
+#[derive(Debug)]
+pub struct WeakArcTex<T>(pub(super) Weak<RwLock<T>>);
+
+impl<T> Clone for WeakArcTex<T> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
+impl<T> WeakArcTex<T> {
+    pub fn upgrade(&self) -> ArcTex<T> {
+        // fail gracelessly
+        self.0.upgrade().unwrap()
+    }
+}
+
+impl<T> From<&ArcTex<T>> for WeakArcTex<T> {
+    fn from(value: &ArcTex<T>) -> Self {
+        Self(Arc::downgrade(value))
+    }
+}
+
+impl<T> From<ArcTex<T>> for WeakArcTex<T> {
+    fn from(value: ArcTex<T>) -> Self {
+        Self(Arc::downgrade(&value))
+    }
+}
+
+pub enum ArcTexOrConst<T> {
+    Arc(ArcTex<T>),
+    Const(*const T),
+}
+
+impl<T> AsRaw<T> for ArcTexOrConst<T> {
+    fn as_raw(&self) -> *const T {
+        match self {
+            ArcTexOrConst::Arc(a) => a.as_raw(),
+            ArcTexOrConst::Const(c) => *c,
+        }
+    }
+}
+
+impl<T> ArcTexOrConst<T> {
+    #[must_use]
+    pub fn as_arc(&self) -> Option<&ArcTex<T>> {
+        if let Self::Arc(v) = self {
+            Some(v)
+        } else {
+            None
+        }
+    }
+}
+
+impl<T> From<*const T> for ArcTexOrConst<T> {
+    fn from(v: *const T) -> Self {
+        Self::Const(v)
+    }
+}
+
+impl<T> From<ArcTex<T>> for ArcTexOrConst<T> {
+    fn from(v: ArcTex<T>) -> Self {
+        Self::Arc(v)
+    }
+}
+
+impl<'a, T> AsRaw<T> for RwLockReadGuard<'a, T> {
+    fn as_raw(&self) -> *const T {
+        &**self as *const T
+    }
+}
+
+impl<'a, T> AsRaw<T> for &RwLockReadGuard<'a, T> {
+    fn as_raw(&self) -> *const T {
+        &***self as *const T
     }
 }

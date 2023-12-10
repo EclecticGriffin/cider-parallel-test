@@ -1,6 +1,6 @@
-use crate::utils::assignment_to_string;
+use crate::interpreter_ir;
 use crate::values::Value;
-use calyx_ir::{self as ir, Assignment, Id};
+use calyx_ir::{self as ir, Id};
 use calyx_utils::Error as CalyxError;
 use rustyline::error::ReadlineError;
 use thiserror::Error;
@@ -159,16 +159,17 @@ pub enum InterpreterError {
 
 impl InterpreterError {
     pub fn conflicting_assignments(
-        port_id: Id,
-        parent_id: Id,
-        a1: &Assignment<ir::Nothing>,
-        a2: &Assignment<ir::Nothing>,
+        _port_id: Id,
+        _parent_id: Id,
+        _a1: &interpreter_ir::Assignment<ir::Nothing>,
+        _a2: &interpreter_ir::Assignment<ir::Nothing>,
     ) -> Self {
+        #[allow(unreachable_code)]
         Self::ConflictingAssignments {
-            port_id,
-            parent_id,
-            a1: assignment_to_string(a1),
-            a2: assignment_to_string(a2),
+            port_id: _port_id,
+            parent_id: _parent_id,
+            a1: todo!(),
+            a2: todo!(),
         }
     }
 }
@@ -187,18 +188,23 @@ impl From<CalyxError> for InterpreterError {
     }
 }
 
-impl From<crate::structures::stk_env::CollisionError<*const ir::Port, Value>>
-    for InterpreterError
+impl
+    From<
+        crate::structures::stk_env::CollisionError<
+            *const interpreter_ir::Port,
+            Value,
+        >,
+    > for InterpreterError
 {
     fn from(
         err: crate::structures::stk_env::CollisionError<
-            *const calyx_ir::Port,
+            *const interpreter_ir::Port,
             crate::values::Value,
         >,
     ) -> Self {
         // when the error is first raised, the IR has not yet been deconstructed, so this
         // dereference is safe
-        let port: &ir::Port = unsafe { &*err.0 };
+        let port: &interpreter_ir::Port = unsafe { &*err.0 };
         let parent_name = port.get_parent_name();
         let port_name = port.name;
         Self::ParOverlap {

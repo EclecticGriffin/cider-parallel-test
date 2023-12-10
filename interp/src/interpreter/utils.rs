@@ -1,21 +1,22 @@
-use crate::values::Value;
-use calyx_ir as ir;
-use calyx_ir::RRC;
+use crate::{
+    interpreter_ir::{Assignment, Cell, Control, Group, Port, PortParent},
+    utils::ArcTex,
+    values::Value,
+};
+use calyx_ir as orig_ir;
 use std::cell::Ref;
 use std::collections::HashSet;
 use std::ops::Deref;
-pub type ConstPort = *const ir::Port;
-pub type ConstCell = *const ir::Cell;
-
-use crate::interpreter_ir as iir;
+pub type ConstPort = *const Port;
+pub type ConstCell = *const Cell;
 
 #[inline]
-pub fn get_done_port(group: &ir::Group) -> RRC<ir::Port> {
+pub fn get_done_port(group: &Group) -> ArcTex<Port> {
     group.get("done")
 }
 
 #[inline]
-pub fn get_go_port(group: &ir::Group) -> RRC<ir::Port> {
+pub fn get_go_port(group: &Group) -> ArcTex<Port> {
     group.get("go")
 }
 
@@ -26,30 +27,30 @@ pub fn is_signal_high(done: &Value) -> bool {
 
 pub fn get_dest_cells<'a, I>(
     iter: I,
-    done_sig: Option<RRC<ir::Port>>,
-) -> Vec<RRC<ir::Cell>>
+    done_sig: Option<ArcTex<Port>>,
+) -> Vec<ArcTex<Cell>>
 where
-    I: Iterator<Item = &'a ir::Assignment<ir::Nothing>>,
+    I: Iterator<Item = &'a Assignment<orig_ir::Nothing>>,
 {
-    let mut assign_set: HashSet<*const ir::Cell> = HashSet::new();
+    let mut assign_set: HashSet<*const Cell> = HashSet::new();
     let mut output_vec = vec![];
 
     if let Some(done_prt) = done_sig {
-        if let ir::PortParent::Cell(c) = &done_prt.borrow().parent {
+        if let PortParent::Cell(c) = &done_prt.read().parent {
             let parent = c.upgrade();
-            assign_set.insert(parent.as_ptr());
+            assign_set.insert(parent.data_ptr());
             output_vec.push(parent)
         }
     };
 
     let iterator = iter.filter_map(|assign| {
-        match &assign.dst.borrow().parent {
-            ir::PortParent::Cell(c) => {
-                match &c.upgrade().borrow().prototype {
-                    ir::CellType::Primitive { .. }
-                    | ir::CellType::Constant { .. }
-                    | ir::CellType::Component { .. } => {
-                        let const_cell: *const ir::Cell = c.upgrade().as_ptr();
+        match &assign.dst.read().parent {
+            PortParent::Cell(c) => {
+                match &c.upgrade().read().prototype {
+                    orig_ir::CellType::Primitive { .. }
+                    | orig_ir::CellType::Constant { .. }
+                    | orig_ir::CellType::Component { .. } => {
+                        let const_cell: *const Cell = c.upgrade().data_ptr();
                         if assign_set.contains(&const_cell) {
                             None //b/c we don't want duplicates
                         } else {
@@ -58,28 +59,25 @@ where
                         }
                     }
 
-                    ir::CellType::ThisComponent => None,
+                    orig_ir::CellType::ThisComponent => None,
                 }
             }
-            ir::PortParent::Group(_) => None,
-            ir::PortParent::StaticGroup(_) => {
-                panic!("Static Groups not yet implemented for interpreter")
-            }
+            PortParent::Group(_) => None,
         }
     });
     output_vec.extend(iterator);
 
     output_vec
 }
-pub fn control_is_empty(control: &iir::Control) -> bool {
+pub fn control_is_empty(control: &Control) -> bool {
     match control {
-        iir::Control::Seq(s) => s.stmts.iter().all(control_is_empty),
-        iir::Control::Par(p) => p.stmts.iter().all(control_is_empty),
-        iir::Control::If(_) => false,
-        iir::Control::While(_) => false,
-        iir::Control::Invoke(_) => false,
-        iir::Control::Enable(_) => false,
-        iir::Control::Empty(_) => true,
+        Control::Seq(s) => s.stmts.iter().all(control_is_empty),
+        Control::Par(p) => p.stmts.iter().all(control_is_empty),
+        Control::If(_) => false,
+        Control::While(_) => false,
+        Control::Invoke(_) => false,
+        Control::Enable(_) => false,
+        Control::Empty(_) => true,
     }
 }
 
