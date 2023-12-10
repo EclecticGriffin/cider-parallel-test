@@ -1,3 +1,25 @@
+# Cider Parallelization Experiment (CS 6230)
+
+Follow the installation instructions below or the local installation
+instructions [here](https://github.com/cucapra/cidr-evaluation). The main branch
+of this repo contains the modified interpreter as well as the data I collected.
+
+After building the simulator, the benchmarks can be run by
+```
+cd cidr-evaluation
+python3 scripts/run-benchmarks.py core
+```
+
+To run the original simulator, checkout the `original` branch, rebuild the
+binaries then return to this branch and run the above code again. Note that you
+must move the generated data in the `statistic` and `individual_results` folders
+elsewhere to avoid computing incorrect statistics.
+
+My data can be found in the `cidr-evaluation` folder under the `single_threaded`
+and `parallel folders`.
+
+--
+
 [![Built with Depot](https://depot.dev/badges/built-with-depot.svg)](https://depot.dev/?utm_source=capra)
 
 <h1>
